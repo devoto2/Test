@@ -164,3 +164,22 @@ a{color:var(--stem)}
 .estado .btn.small{flex:none}
 .dayhead{font-size:1.05rem;color:var(--ink)}
 .empty .link{font-size:.95rem;color:var(--stem);font-weight:700}
+/* producción */
+.pill.prod{background:var(--ink);color:var(--bg)}
+.card.tarea{gap:12px;padding:18px;border-left:4px solid var(--ink)}
+.card.tarea.hecha{border-left-color:var(--ok);opacity:.85}
+.ramos-t{font-weight:700;margin-top:2px}
+.plazo{display:flex;align-items:center;gap:8px;font-weight:700}
+.plazo svg{width:18px;height:18px;flex:none;color:var(--muted)}
+.estado .link{margin-left:auto}
+.mini.tarea-m{border-left:4px solid var(--ink)}
+.mini.tarea-m .t{font-size:1rem}
+.prod-l{display:block;font-size:.85rem;font-weight:700;color:var(--ink)}
+.tdia,.md{position:relative}
+.tdia u,.md u{position:absolute;top:5px;right:5px;width:7px;height:7px;border-radius:999px;background:var(--ink)}
+.tdia[aria-pressed="true"] u{background:var(--bg)}
+.leyenda{display:flex;gap:14px;font-size:.8rem;color:var(--muted)}
+.leyenda span::before{content:"";display:inline-block;width:9px;height:9px;border-radius:999px;margin-right:5px;vertical-align:0}
+.leyenda .lf::before{background:var(--stem)}
+.leyenda .lt::before{background:var(--ink)}
+.cal{display:flex;flex-direction:column;gap:10px;border-top:1px solid var(--line);padding-top:14px;margin-top:4px}

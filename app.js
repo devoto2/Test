@@ -8,7 +8,7 @@ const $=s=>document.querySelector(s);
 const ls={get(k){try{return localStorage.getItem(k)}catch(e){return null}},set(k,v){try{v==null?localStorage.removeItem(k):localStorage.setItem(k,v)}catch(e){}}};
 
 let S=null, codigo=ls.get('eq_codigo'), me=ls.get('eq_yo'), tab=ls.get('eq_tab')||'dia';
-let agVista=ls.get('eq_agvista')||'semana', agQuien=null, agCursor=null, agDia=null, pos=null, precision=null, geoEstado='no', errYo='', diaSel=null;
+let agVista=ls.get('eq_agvista')||'semana', agQuien=null, agCursor=null, agDia=null, pos=null, precision=null, geoEstado='no', errYo='', diaSel=null, verMes=ls.get('eq_vermes')==='1', mdCursor=null;
 let editId=null, dirty=false, token=ls.get('eq_token'), owner=!!token, nuevoCodigo=null, errLock='', instalar=null;
 
 /* ---------- cifrado: PBKDF2-SHA256 + AES-GCM ---------- */
@@ -51,6 +51,9 @@ function fmtActualizado(a){
 const ord=(a,b)=>(a.fecha+(a.llegada||a.funcion||'99')).localeCompare(b.fecha+(b.llegada||b.funcion||'99'));
 const futuros=()=>S.eventos.filter(e=>e.fecha>=hoyISO()).sort(ord);
 const mios=()=>futuros().filter(e=>me&&(e.equipo||[]).includes(me));
+const ordT=(a,b)=>(a.fecha+(a.hasta||'99')).localeCompare(b.fecha+(b.hasta||'99'));
+const tareasDe=()=>(S.tareas||[]).filter(t=>t.fecha>=hoyISO()).sort(ordT);
+const misTareas=()=>tareasDe().filter(t=>me&&(t.equipo||[]).includes(me));
 
 const I={
  map:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></svg>',
@@ -59,6 +62,7 @@ const I={
  cal:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>',
  list:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4.5" cy="6" r="1.2"/><circle cx="4.5" cy="12" r="1.2"/><circle cx="4.5" cy="18" r="1.2"/></svg>',
  team:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="9" cy="8" r="3.2"/><path d="M3 20c0-3.3 2.7-5.5 6-5.5s6 2.2 6 5.5"/><circle cx="17" cy="9" r="2.4"/><path d="M16 14.6c2.8.2 5 2 5 5"/></svg>',
+ clock:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
  edit:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16v4z"/><path d="M13.5 6.5l4 4"/></svg>'
 };
 /* ---------- ubicación y distancias ---------- */
@@ -102,12 +106,16 @@ function ubicarFaltantes(){
     ls.set('eq_geo',JSON.stringify(geoCache)); geoCorriendo=false; if(pos&&tab!=='form')render();
   })();
 }
+function actualizarKm(){
+  if(!S) return;
+  document.querySelectorAll('[data-km]').forEach(el=>{const e=S.eventos.find(x=>x.id===el.dataset.km),d=e&&distDe(e);if(d!=null)el.textContent=fmtDist(d)});
+}
 function seguirUbicacion(){
   if(!navigator.geolocation||geoEstado==='si') return;
   geoEstado='pidiendo';
   navigator.geolocation.watchPosition(p=>{
     const nuevo=!pos; pos=[p.coords.latitude,p.coords.longitude]; precision=p.coords.accuracy||null; geoEstado='si'; ls.set('eq_geo_ok','1');
-    const marco=revisarLlegadas();
+    const marco=revisarLlegadas(); actualizarKm();
     if((nuevo||marco||Date.now()-(seguirUbicacion.t||0)>60000)&&tab!=='form'){seguirUbicacion.t=Date.now();render()}
   },err=>{geoEstado=err.code===1?'negado':'no';if(tab!=='form')render()},{enableHighAccuracy:true,maximumAge:30000,timeout:20000});
 }
@@ -115,6 +123,40 @@ function bannerUbicacion(){
   if(geoEstado==='si'||geoEstado==='pidiendo'||!navigator.geolocation) return '';
   if(geoEstado==='negado') return `<div class="aviso warn">${I.map}<div><strong>La app no puede ver tu ubicación</strong><span>Sin eso no se marca sola tu llegada. Permitila en los ajustes del navegador para este sitio.</span></div></div>`;
   return `<div class="aviso">${I.map}<div><strong>Activá tu ubicación</strong><span>Tu llegada se marca sola cuando estás en el teatro, y ves a cuántos km estás.</span></div><button class="btn small primary" data-geo>Activar</button></div>`;
+}
+
+/* ---------- tareas de producción ---------- */
+let hechas=(()=>{try{return JSON.parse(ls.get('eq_hechas')||'{}')}catch(e){return {}}})();
+function encolar(x){let cola=[];try{cola=JSON.parse(ls.get('eq_cola')||'[]')}catch(err){}cola.push(x);ls.set('eq_cola',JSON.stringify(cola.slice(-200)))}
+function marcarHecha(t,si){
+  if(si){hechas[t.id]={hora:ahoraHM()};toast('Tarea hecha')}else delete hechas[t.id];
+  ls.set('eq_hechas',JSON.stringify(hechas));
+  encolar({id:`${me}|${t.id}|${si?'hecha':'deshecha'}|${Date.now()}`,tipo:si?'tarea_hecha':'tarea_deshecha',ts:new Date().toISOString(),quien:me,evento_id:t.id,lugar:t.que,fecha:t.fecha,gps:null,dist_m:null,manual:true});
+  enviarCola();
+}
+const ramosTxt=r=>{r=r||{};return [r.c?`${r.c} chicos`:'',r.m?`${r.m} medianos`:'',r.g?`${r.g} grandes`:''].filter(Boolean).join(' · ')};
+function plazoTarea(t){
+  if(t.hasta) return `Hasta las ${esc(t.hasta)}`;
+  const f=S.eventos.filter(e=>e.fecha===t.fecha&&(e.equipo||[]).some(n=>(t.equipo||[]).includes(n))).sort(ord)[0];
+  return f?`Antes de salir a ${esc(f.lugar)}${f.llegada?` (llegás ${esc(f.llegada)})`:''}`:'En el día';
+}
+function tarjetaTarea(t){
+  const eq=t.equipo||[], comp=eq.filter(n=>n!==me), h=hechas[t.id], rt=ramosTxt(t.ramos);
+  return `<article class="card tarea${h?' hecha':''}">
+   <div class="row"><span class="pill prod">Producción</span></div>
+   <div><div class="place">${esc(t.que||'Tarea')}</div>${rt?`<div class="ramos-t">${rt}</div>`:''}</div>
+   <div class="plazo">${I.clock}<span>${plazoTarea(t)}</span></div>
+   <dl class="facts">${t.donde?`<dt>Dónde</dt><dd>${esc(t.donde)}</dd>`:''}<dt>Con</dt><dd>${comp.length?esc(comp.join(', ')):(eq.length?'Sola/o':'Sin asignar')}</dd></dl>
+   ${t.nota?`<div class="nota">${esc(t.nota)}</div>`:''}
+   ${h?`<div class="estado ok">${I.ok}<span>Hecha a las <b>${esc(h.hora)}</b></span><button class="link" data-deshacer="${t.id}">Deshacer</button></div>`:`<button class="btn" data-hecha="${t.id}">${I.ok}Marcar como hecha</button>`}
+  </article>`;
+}
+function miniTarea(t,attr){
+  const eq=t.equipo||[];
+  return `<button class="card mini tarea-m" ${attr}="${t.id}">
+   <span class="t">${t.hasta?'≤'+esc(t.hasta):'—'}</span>
+   <span style="min-width:0"><span class="place">${esc(t.que||'Tarea')}</span><span class="prod-l">Producción${ramosTxt(t.ramos)?' · '+ramosTxt(t.ramos):''}</span>
+   <span class="who-l">${eq.length?esc(eq.join(', ')):'Sin asignar'}${hechas[t.id]?' · hecha':''}</span></span></button>`;
 }
 
 /* ---------- llegadas: se marcan solas por cercanía ---------- */
@@ -155,8 +197,8 @@ function revisarLlegadas(){
 function estadoLlegada(e){
   const l=llegadas[e.id], hoy=hoyISO(), mia=me&&(e.equipo||[]).includes(me), d=distDe(e);
   if(l) return `<div class="estado ok">${I.ok}<span>Llegaste a las <b>${esc(l.hora)}</b></span></div>`;
-  if(e.fecha!==hoy||!mia) return d!=null?`<div class="estado">${I.map}<span>Estás a <b>${fmtDist(d)}</b></span></div>`:'';
-  if(d!=null) return `<div class="estado">${I.map}<span>Estás a <b>${fmtDist(d)}</b>. Tu llegada se marca sola al llegar.</span></div>`;
+  if(d!=null) return `<div class="estado">${I.map}<span>Estás a <b data-km="${e.id}">${fmtDist(d)}</b></span></div>`;
+  if(e.fecha!==hoy||!mia) return '';
   if(geoEstado==='si'&&!coordsDe(e)) return `<div class="estado off"><span>Este teatro todavía no tiene ubicación cargada.</span><button class="link" data-marcar="${e.id}">Marcar llegada a mano</button></div>`;
   if(geoEstado==='negado') return `<div class="estado off"><span>Sin permiso de ubicación.</span><button class="link" data-marcar="${e.id}">Marcar llegada a mano</button></div>`;
   if(geoEstado==='si'||geoEstado==='pidiendo') return `<div class="estado off"><span>Buscando tu ubicación…</span></div>`;
@@ -217,7 +259,7 @@ function mini(e,attr){
   const eq=e.equipo||[], sin=!eq.length;
   return `<button class="card mini${sin?' unassigned':''}" ${attr}="${e.id}">
    <span class="t">${esc(e.llegada||e.funcion||'¿?')}</span>
-   <span style="min-width:0"><span class="place">${esc(e.lugar)}</span>${llegadas[e.id]?`<span class="dist cerca">Llegaste ${esc(llegadas[e.id].hora)}</span>`:distHTML(e,true)}
+   <span style="min-width:0"><span class="place">${esc(e.lugar)}</span>${llegadas[e.id]?`<span class="dist cerca">Llegaste ${esc(llegadas[e.id].hora)}</span>`:(distDe(e)!=null?`<span class="dist" data-km="${e.id}">${fmtDist(distDe(e))}</span>`:'')}
    <span class="who-l">${sin?'Sin asignar':esc(eq.join(', '))}${e.confirmado?'':' · a confirmar'}</span></span></button>`;
 }
 function porDia(list,fn){
@@ -239,59 +281,62 @@ function vistaQuien(){
 }
 function vistaDia(){
   if(!me) return vistaQuien();
-  const hoy=hoyISO(), m=mios();
+  const hoy=hoyISO(), m=mios(), mt=misTareas();
   if(!diaSel||diaSel<hoy) diaSel=hoy;
-  const del=m.filter(e=>e.fecha===diaSel);
+  const del=m.filter(e=>e.fecha===diaSel), tdel=mt.filter(t=>t.fecha===diaSel);
   let h=`<div class="marca">Blanco<span>Flor</span><small>Equipo</small></div>${bannerInstalar()}${bannerUbicacion()}
-  <div class="top"><div><h1>Hola, ${esc(me)}</h1><div class="hoy">Hoy es ${fechaLarga(hoy)}</div></div><button class="chip" data-cambiar>Cambiar</button></div>${tiraSemana(m)}`;
-  h+=`<div class="dayhead">${diaSel===hoy?'Tu día':fechaLarga(diaSel)}</div>`;
+  <div class="top"><div><h1>Hola, ${esc(me)}</h1><div class="hoy">Hoy es ${fechaLarga(hoy)}</div></div><button class="chip" data-cambiar>Cambiar</button></div>`;
+  h+=`<div class="top"><div class="dayhead">${diaSel===hoy?'Tu día':fechaLarga(diaSel)}</div>${diaSel!==hoy?'<button class="chip" data-dia-sel="hoy">Volver a hoy</button>':''}</div>`;
   if(del.length) h+=del.map((e,i)=>tarjeta(e,diaSel===hoy&&i===0)).join('');
-  else{
+  if(tdel.length) h+=`<span class="label">Producción</span>`+tdel.map(tarjetaTarea).join('');
+  if(!del.length&&!tdel.length){
     const prox=m.find(e=>e.fecha>diaSel);
-    h+=`<div class="card empty"><strong>${diaSel===hoy?'Hoy no tenés funciones.':'Ese día estás libre.'}</strong>${prox?`<button class="link" data-dia-sel="${prox.fecha}">La próxima es el ${fechaLarga(prox.fecha)}</button>`:'<span>Cuando Pablo te asigne una, aparece acá con la hora y cómo llegar.</span>'}</div>`;
+    h+=`<div class="card empty"><strong>${diaSel===hoy?'Hoy no tenés nada asignado.':'Ese día estás libre.'}</strong>${prox?`<button class="link" data-dia-sel="${prox.fecha}">La próxima función es el ${fechaLarga(prox.fecha)}</button>`:'<span>Cuando Pablo te asigne algo, aparece acá.</span>'}</div>`;
   }
-  return h;
+  h+=`<section class="cal"><div class="top"><div class="dayhead">${verMes?'Tu mes':'Tu semana'}</div><button class="chip" data-ver-mes>${verMes?'Ver semana':'Ver mes'}</button></div>`;
+  h+=verMes?gridMes(m,mt,mdCursor||hoy,diaSel,'md'):tiraSemana(m,mt);
+  return h+`</section>`;
 }
-function vistaSemana(){
-  if(!me) return vistaQuien();
-  const m=mios();
-  return `<div class="top"><h1>Mis funciones</h1><button class="chip" data-cambiar>${esc(me)}</button></div>`+
-   (m.length?porDia(m,e=>tarjeta(e,false)):`<div class="card empty">No tenés funciones asignadas por ahora.</div>`);
+function cuenta(d,evs,tars){return {n:evs.filter(e=>e.fecha===d).length,t:tars.filter(t=>t.fecha===d).length}}
+function gridMes(evs,tars,cursor,sel,pref){
+  const hoy=hoyISO(), m1=cursor.slice(0,8)+'01', ini=lunes(m1), mes=m1.slice(0,7);
+  let h=`<div class="nav"><button class="chip" data-${pref}-mes="-1" aria-label="Mes anterior">‹</button><strong class="mest">${MESES[+mes.slice(5)-1]} ${mes.slice(0,4)}</strong><button class="chip" data-${pref}-mes="1" aria-label="Mes siguiente">›</button></div>`;
+  h+=`<div class="mes" role="grid">${DIAS.map(d=>`<span class="mh">${d[0]}</span>`).join('')}`;
+  for(let i=0;i<42;i++){const d=addDias(ini,i); if(i>=35&&!d.startsWith(mes))break;
+    const c=cuenta(d,evs,tars), fuera=!d.startsWith(mes);
+    h+=`<button class="md${fuera?' fuera':''}${d===hoy?' hoyd':''}${d===sel?' sel':''}${d<hoy?' pasado':''}" data-${pref}-dia="${d}" aria-label="${fechaLarga(d)}: ${c.n} funciones, ${c.t} tareas"><b>${+d.slice(8)}</b>${c.n?`<i>${c.n}</i>`:''}${c.t?'<u></u>':''}</button>`}
+  return h+`</div><div class="leyenda"><span class="lf">Funciones</span><span class="lt">Producción</span></div>`;
 }
-function tiraSemana(list){
+function tiraSemana(list,tars){
   const hoy=hoyISO(), dias=[...Array(7)].map((_,i)=>addDias(hoy,i));
-  return `<div class="tira" aria-label="Tus próximos 7 días">${dias.map(d=>{const n=list.filter(e=>e.fecha===d).length;
-   return `<button class="tdia${n?' con':''}${d===hoy?' hoyd':''}" data-dia-sel="${d}" aria-pressed="${d===(diaSel||hoy)}"><span>${d===hoy?'Hoy':DIAS[diaSem(d)]}</span><b>${+d.slice(8)}</b><i>${n?n+' func.':'libre'}</i></button>`}).join('')}</div>`;
+  return `<div class="tira" aria-label="Tus próximos 7 días">${dias.map(d=>{const c=cuenta(d,list,tars);
+   return `<button class="tdia${c.n?' con':''}${d===hoy?' hoyd':''}" data-dia-sel="${d}" aria-pressed="${d===(diaSel||hoy)}"><span>${d===hoy?'Hoy':DIAS[diaSem(d)]}</span><b>${+d.slice(8)}</b><i>${c.n?c.n+' func.':(c.t?'prod.':'libre')}</i>${c.t?'<u></u>':''}</button>`}).join('')}</div>`;
 }
 function vistaAgenda(){
   const hoy=hoyISO();
-  if(!agQuien) agQuien=(me&&!owner)?'mias':'todos';
   if(!agCursor) agCursor=hoy;
-  const base=S.eventos.filter(e=>agQuien==='todos'||(me&&(e.equipo||[]).includes(me))).sort(ord);
+  const base=S.eventos.slice().sort(ord), tb=(S.tareas||[]).slice().sort(ordT);
   const f=futuros(), sin=f.filter(e=>!(e.equipo||[]).length).length;
-  const seg=(k,v,l)=>`<button class="seg-b" data-${k}="${v}" aria-pressed="${(k==='ag-vista'?agVista:agQuien)===v}">${l}</button>`;
-  let h=`<h1>Agenda</h1><div class="hoy">${f.length} funciones por delante${sin?` · <strong style="color:var(--warn)">${sin} sin asignar</strong>`:''}</div>
-  <div class="row ctrl"><div class="seg">${seg('ag-vista','semana','Semana')}${seg('ag-vista','mes','Mes')}</div>
-  ${me?`<div class="seg">${seg('ag-quien','mias','Mías')}${seg('ag-quien','todos','Todo el equipo')}</div>`:''}</div>`;
+  const seg=(v,l)=>`<button class="seg-b" data-ag-vista="${v}" aria-pressed="${agVista===v}">${l}</button>`;
+  const delDia=d=>{const ev=base.filter(e=>e.fecha===d), tt=tb.filter(t=>t.fecha===d);
+    return ev.length||tt.length?ev.map(e=>mini(e,'data-ver')).join('')+tt.map(t=>miniTarea(t,owner?'data-editar-t':'data-ver-t')).join(''):'<div class="libre">Libre</div>'};
+  let h=`<h1>Equipo</h1><div class="hoy">${f.length} funciones por delante${sin?` · <strong style="color:var(--warn)">${sin} sin asignar</strong>`:''}</div>
+  <div class="row ctrl"><div class="seg">${seg('semana','Semana')}${seg('mes','Mes')}</div></div>`;
   if(agVista==='semana'){
     const l=lunes(agCursor), dias=[...Array(7)].map((_,i)=>addDias(l,i));
     const tit=`${+l.slice(8)} de ${MESES[+l.slice(5,7)-1]} al ${+dias[6].slice(8)} de ${MESES[+dias[6].slice(5,7)-1]}`;
     h+=`<div class="nav"><button class="chip" data-ag-mover="-7" aria-label="Semana anterior">‹</button><strong>${tit}</strong><button class="chip" data-ag-mover="7" aria-label="Semana siguiente">›</button></div>`;
-    h+=dias.map(d=>{const ev=base.filter(e=>e.fecha===d);
-      return `<section class="daygroup${d<hoy?' pasado':''}"><div class="dayhead">${d===hoy?'Hoy, ':''}${fechaLarga(d)}</div>${ev.length?ev.map(e=>mini(e,'data-ver')).join(''):'<div class="libre">Libre</div>'}</section>`}).join('');
+    h+=dias.map(d=>`<section class="daygroup${d<hoy?' pasado':''}"><div class="dayhead">${d===hoy?'Hoy, ':''}${fechaLarga(d)}</div>${delDia(d)}</section>`).join('');
   }else{
-    const m1=agCursor.slice(0,8)+'01', ini=lunes(m1), mes=m1.slice(0,7);
-    const sel=agDia&&agDia.startsWith(mes)?agDia:(hoy.startsWith(mes)?hoy:m1);
-    h+=`<div class="nav"><button class="chip" data-ag-mes="-1" aria-label="Mes anterior">‹</button><strong class="mest">${MESES[+mes.slice(5)-1]} ${mes.slice(0,4)}</strong><button class="chip" data-ag-mes="1" aria-label="Mes siguiente">›</button></div>`;
-    h+=`<div class="mes" role="grid">${DIAS.map(d=>`<span class="mh">${d[0]}</span>`).join('')}`;
-    for(let i=0;i<42;i++){const d=addDias(ini,i); if(i>=35&&!d.startsWith(mes))break;
-      const ev=base.filter(e=>e.fecha===d), fuera=!d.startsWith(mes);
-      h+=`<button class="md${fuera?' fuera':''}${d===hoy?' hoyd':''}${d===sel?' sel':''}${d<hoy?' pasado':''}" data-ag-dia="${d}" aria-label="${fechaLarga(d)}: ${ev.length} funciones"><b>${+d.slice(8)}</b>${ev.length?`<i>${ev.length}</i>`:''}</button>`}
-    h+=`</div>`;
-    const ev=base.filter(e=>e.fecha===sel);
-    h+=`<section class="daygroup"><div class="dayhead">${sel===hoy?'Hoy, ':''}${fechaLarga(sel)}</div>${ev.length?ev.map(e=>mini(e,'data-ver')).join(''):'<div class="libre">Sin funciones</div>'}</section>`;
+    const mes=agCursor.slice(0,7), sel=agDia&&agDia.startsWith(mes)?agDia:(hoy.startsWith(mes)?hoy:mes+'-01');
+    h+=gridMes(base,tb,agCursor,sel,'ag');
+    h+=`<section class="daygroup"><div class="dayhead">${sel===hoy?'Hoy, ':''}${fechaLarga(sel)}</div>${delDia(sel)}</section>`;
   }
   return h+`<div class="row" style="justify-content:center">${owner?'':'<button class="link" data-modo-pablo>Soy Pablo: armar la agenda</button>'}<button class="link" data-salir>Cerrar sesión en este celular</button></div>`;
+}
+function vistaDetalleT(){
+  const t=(S.tareas||[]).find(x=>x.id===editId); if(!t) return vistaAgenda();
+  return `<div class="top"><button class="chip" data-tab="agenda">← Volver</button></div><div class="dayhead">${fechaLarga(t.fecha)}</div>`+tarjetaTarea(t);
 }
 function vistaDetalle(){
   const e=S.eventos.find(x=>x.id===editId); if(!e) return vistaAgenda();
@@ -316,9 +361,37 @@ function vistaArmar(){
    <form id="f-persona" class="row" style="flex-direction:row"><input id="nueva-persona" placeholder="Nombre" style="flex:1 1 160px" autocomplete="off" aria-label="Nombre de la persona"><button class="btn small primary" type="submit">Sumar</button></form>
    <div class="field"><label for="nuevo-codigo">Cambiar el código del equipo</label><input id="nuevo-codigo" autocomplete="off" autocapitalize="none" placeholder="Dejalo vacío para mantener el actual"><span class="hint">Si lo cambiás, pasáselo de nuevo a todos.</span></div>
   </section>
-  <button class="btn primary" data-editar="nuevo">+ Nueva función</button>
-  ${porDia(f,e=>mini(e,'data-editar'))}
+  <div class="row"><button class="btn primary" data-editar="nuevo">+ Nueva función</button><button class="btn" data-editar-t="nueva">+ Nueva tarea de producción</button></div>
+  ${porDia([...f.map(e=>({...e,_k:'f'})),...tareasDe().map(t=>({...t,_k:'t'}))],x=>x._k==='f'?mini(x,'data-editar'):miniTarea(x,'data-editar-t'))}
   <div class="row" style="justify-content:center"><button class="link" data-sin-pablo>Desactivar modo Pablo en este celular</button></div>`;
+}
+function vistaFormT(){
+  const nuevo=editId==='nueva';
+  const t=nuevo?{id:'t'+Date.now().toString(36),fecha:hoyISO(),que:'Armar ramos',ramos:{c:0,m:0,g:0},donde:'',hasta:'',equipo:[],nota:''}:(S.tareas||[]).find(x=>x.id===editId);
+  const r=t.ramos||{};
+  return `<div class="top"><button class="chip" data-tab="armar">← Volver</button><h2>${nuevo?'Nueva tarea de producción':'Editar tarea'}</h2></div>
+  <form id="f-tarea" class="card" data-id="${t.id}">
+   <div class="grid2"><div class="field"><label for="ta-fecha">Día</label><input id="ta-fecha" type="date" value="${esc(t.fecha)}" required></div>
+   <div class="field"><label for="ta-hasta">Hasta qué hora</label><input id="ta-hasta" type="time" value="${esc(t.hasta)}"><span class="hint">Vacío: antes de salir a la función de ese día.</span></div></div>
+   <div class="field"><label for="ta-que">Qué hay que hacer</label><input id="ta-que" value="${esc(t.que)}" required></div>
+   <div class="field"><span class="label">Ramos</span><div class="grid3">
+    <div class="field"><label for="ta-c">Chicos</label><input id="ta-c" type="number" min="0" inputmode="numeric" value="${r.c||0}"></div>
+    <div class="field"><label for="ta-m">Medianos</label><input id="ta-m" type="number" min="0" inputmode="numeric" value="${r.m||0}"></div>
+    <div class="field"><label for="ta-g">Grandes</label><input id="ta-g" type="number" min="0" inputmode="numeric" value="${r.g||0}"></div></div></div>
+   <div class="field"><label for="ta-donde">Dónde</label><input id="ta-donde" value="${esc(t.donde)}" placeholder="Ej. el taller"></div>
+   <div class="field"><span class="label">Quién</span><div class="who">${S.equipo.map(n=>`<button type="button" class="chip" data-asignar="${esc(n)}" aria-pressed="${(t.equipo||[]).includes(n)}">${esc(n)}</button>`).join('')}</div></div>
+   <div class="field"><label for="ta-nota">Cómo hacerlo (nota)</label><textarea id="ta-nota">${esc(t.nota)}</textarea></div>
+   <div class="row"><button class="btn primary" type="submit">Guardar</button>${nuevo?'':`<button class="btn danger" type="button" data-borrar-t="${t.id}">Borrar</button>`}</div>
+  </form>`;
+}
+function guardarTarea(f){
+  const id=f.dataset.id; S.tareas=S.tareas||[]; let t=S.tareas.find(x=>x.id===id);
+  if(!t){t={id};S.tareas.push(t)}
+  const v=k=>document.getElementById(k).value.trim();
+  Object.assign(t,{fecha:v('ta-fecha'),hasta:v('ta-hasta'),que:v('ta-que'),donde:v('ta-donde'),nota:v('ta-nota'),
+   ramos:{c:+v('ta-c')||0,m:+v('ta-m')||0,g:+v('ta-g')||0},
+   equipo:[...f.querySelectorAll('[data-asignar]')].filter(b=>b.getAttribute('aria-pressed')==='true').map(b=>b.dataset.asignar)});
+  dirty=true; ir('armar'); toast('Guardado. Falta publicar.');
 }
 function vistaForm(){
   const nuevo=editId==='nuevo';
@@ -347,17 +420,17 @@ function vistaForm(){
   </form>`;
 }
 function tabs(){
-  const t=[['dia','Mi día',I.sun],['semana','Mis funciones',I.list],['agenda','Agenda',I.cal]];
+  const t=[['dia','Mi día',I.sun],['agenda','Equipo',I.team]];
   if(owner)t.push(['armar','Armar',I.edit]);
   return `<nav class="tabs" role="tablist"><div class="tabs-in">${t.map(([k,l,ic])=>`<button class="tab" role="tab" data-tab="${k}" aria-selected="${tab===k}">${ic}${l}</button>`).join('')}</div></nav>`;
 }
 function render(){
   if(!S){$('#app').innerHTML=vistaLock();return}
-  const V={detalle:vistaDetalle,form:vistaForm,armar:vistaArmar,semana:vistaSemana,agenda:vistaAgenda,pablo:vistaPablo};
+  const V={detalle:vistaDetalle,detallet:vistaDetalleT,form:vistaForm,formt:vistaFormT,armar:vistaArmar,agenda:vistaAgenda,pablo:vistaPablo};
   $('#app').innerHTML=(V[tab]||vistaDia)()+`<p class="foot">Agenda actualizada el ${esc(fmtActualizado(S.actualizado))}</p>`+tabs();
   ubicarFaltantes();
 }
-function ir(t){tab=t;errLock='';if(['dia','semana','agenda','armar'].includes(t))ls.set('eq_tab',t);render();window.scrollTo(0,0)}
+function ir(t){tab=t;errLock='';if(['dia','agenda','armar'].includes(t))ls.set('eq_tab',t);render();window.scrollTo(0,0)}
 
 /* ---------- acciones ---------- */
 function leerCoords(t){
@@ -414,12 +487,19 @@ document.addEventListener('click',ev=>{
   const b=ev.target.closest('button'); if(!b)return;
   const d=b.dataset;
   if(d.tab) ir(d.tab);
-  else if(d.diaSel){diaSel=d.diaSel;if(tab!=='dia')ir('dia');else render()}
+  else if(d.diaSel){diaSel=d.diaSel==='hoy'?hoyISO():d.diaSel;if(tab!=='dia')ir('dia');else{render();window.scrollTo({top:0,behavior:'smooth'})}}
+  else if('verMes' in d){verMes=!verMes;ls.set('eq_vermes',verMes?'1':null);render()}
+  else if(d.mdMes){const [y,m]=(mdCursor||hoyISO()).split('-').map(Number);mdCursor=new Date(Date.UTC(y,m-1+(+d.mdMes),1)).toISOString().slice(0,10);render()}
+  else if(d.mdDia){diaSel=d.mdDia<hoyISO()?hoyISO():d.mdDia;render();window.scrollTo({top:0,behavior:'smooth'})}
+  else if(d.hecha){const t=(S.tareas||[]).find(x=>x.id===d.hecha);if(t){marcarHecha(t,true);render()}}
+  else if(d.deshacer){const t=(S.tareas||[]).find(x=>x.id===d.deshacer);if(t){marcarHecha(t,false);render()}}
+  else if(d.verT){editId=d.verT;ir('detallet')}
+  else if(d.editarT){editId=d.editarT;ir('formt')}
+  else if(d.borrarT){if(b.dataset.seguro){S.tareas=(S.tareas||[]).filter(t=>t.id!==d.borrarT);dirty=true;ir('armar')}else{b.dataset.seguro='1';b.textContent='Tocá de nuevo para borrar'}}
   else if(d.marcar){const e=S.eventos.find(x=>x.id===d.marcar);if(e){registrarLlegada(e,true);render()}}
   else if('geo' in d){seguirUbicacion();render()}
   else if('ubicar' in d) ubicarForm(b);
   else if(d.agVista){agVista=d.agVista;ls.set('eq_agvista',agVista);render()}
-  else if(d.agQuien){agQuien=d.agQuien;render()}
   else if(d.agMover){agCursor=addDias(agCursor||hoyISO(),+d.agMover);render()}
   else if(d.agMes){const [y,m]=(agCursor||hoyISO()).split('-').map(Number);agCursor=new Date(Date.UTC(y,m-1+(+d.agMes),1)).toISOString().slice(0,10);agDia=null;render()}
   else if(d.agDia){agDia=d.agDia;render()}
@@ -428,12 +508,12 @@ document.addEventListener('click',ev=>{
   else if(d.ver){editId=d.ver;ir('detalle')}
   else if(d.editar){editId=d.editar;ir('form')}
   else if(d.asignar) b.setAttribute('aria-pressed',b.getAttribute('aria-pressed')==='true'?'false':'true');
-  else if(d.quitar){S.equipo=S.equipo.filter(n=>n!==d.quitar);S.eventos.forEach(e=>e.equipo=(e.equipo||[]).filter(n=>n!==d.quitar));dirty=true;render()}
+  else if(d.quitar){S.equipo=S.equipo.filter(n=>n!==d.quitar);S.eventos.forEach(e=>e.equipo=(e.equipo||[]).filter(n=>n!==d.quitar));(S.tareas||[]).forEach(t=>t.equipo=(t.equipo||[]).filter(n=>n!==d.quitar));dirty=true;render()}
   else if(d.borrar){if(b.dataset.seguro){S.eventos=S.eventos.filter(e=>e.id!==d.borrar);dirty=true;ir('armar')}else{b.dataset.seguro='1';b.textContent='Tocá de nuevo para borrar'}}
   else if('publicar' in d) publicar(b);
   else if('modoPablo' in d) ir('pablo');
   else if('sinPablo' in d){token=null;owner=false;ls.set('eq_token',null);ir('agenda')}
-  else if('salir' in d){if(b.dataset.seguro){['eq_codigo','eq_yo','eq_token','eq_tab','eq_agvista'].forEach(k=>ls.set(k,null));location.reload()}else{b.dataset.seguro='1';b.textContent='Tocá de nuevo para cerrar sesión'}}
+  else if('salir' in d){if(b.dataset.seguro){['eq_codigo','eq_yo','eq_token','eq_tab','eq_agvista','eq_vermes'].forEach(k=>ls.set(k,null));location.reload()}else{b.dataset.seguro='1';b.textContent='Tocá de nuevo para cerrar sesión'}}
   else if('instalar' in d&&instalar){instalar.prompt();instalar=null}
   else if('noinst' in d){ls.set('eq_noinst','1');render()}
 });
@@ -446,6 +526,7 @@ document.addEventListener('submit',async ev=>{
   }
   else if(f.id==='f-persona'){const n=$('#nueva-persona').value.trim();if(n&&!S.equipo.includes(n)){S.equipo.push(n);dirty=true}render()}
   else if(f.id==='f-evento') guardarForm(f);
+  else if(f.id==='f-tarea') guardarTarea(f);
   else if(f.id==='f-token'){
     token=$('#token').value.trim();
     try{const r=await gh('');if(!r.permissions||!r.permissions.push)throw Object.assign(new Error(),{status:403});ls.set('eq_token',token);owner=true;ir('armar');toast('Modo Pablo activado')}
@@ -457,14 +538,14 @@ window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();instalar=e;
 window.addEventListener('beforeunload',e=>{if(dirty){e.preventDefault();e.returnValue=''}});
 document.addEventListener('visibilitychange',async()=>{
   if(document.visibilityState==='visible')enviarCola();
-  if(document.visibilityState!=='visible'||!S||!codigo||dirty||tab==='form')return;
+  if(document.visibilityState!=='visible'||!S||!codigo||dirty||tab==='form'||tab==='formt')return;
   try{const n=await descifrar(await bajar(),codigo);if(n.actualizado!==S.actualizado||JSON.stringify(n)!==JSON.stringify(S)){S=n;render();toast('Agenda actualizada')}}catch(e){}
 });
 if('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(()=>{});
 
 (async()=>{
   if(tab==='equipo')tab='agenda';
-  if(!['dia','semana','agenda','armar'].includes(tab))tab='dia';
+  if(!['dia','agenda','armar'].includes(tab))tab='dia';
   if(ls.get('eq_geo_ok'))seguirUbicacion();
   else if(navigator.permissions&&navigator.permissions.query)navigator.permissions.query({name:'geolocation'}).then(p=>{if(p.state==='granted')seguirUbicacion();else if(p.state==='denied'){geoEstado='negado';if(S)render()}}).catch(()=>{});
   if(tab==='armar'&&!owner)tab='dia';
