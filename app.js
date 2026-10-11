@@ -2,6 +2,8 @@
 'use strict';
 const TZ='America/Argentina/Buenos_Aires';
 const REPO='devoto2/Test', ARCHIVO='agenda.enc.json', ITER=310000;
+// Hoja de Google de Pablo que recibe las llegadas (Apps Script, solo agrega filas).
+const REGISTRO_URL='https://script.google.com/macros/s/AKfycbxJyFxYtxpFDxBllGxZJBe3BIJaneVgdDO8CUGvwSQL92g5GBvCxig6wtvSDMEg5m64/exec';
 const $=s=>document.querySelector(s);
 const ls={get(k){try{return localStorage.getItem(k)}catch(e){return null}},set(k,v){try{v==null?localStorage.removeItem(k):localStorage.setItem(k,v)}catch(e){}}};
 
@@ -124,9 +126,24 @@ function registrarLlegada(e,manual){
   ls.set('eq_llegadas',JSON.stringify(llegadas));
   // Cola para mandar al panel cuando esté conectado (formato acordado con el panel central).
   let cola=[];try{cola=JSON.parse(ls.get('eq_cola')||'[]')}catch(x){}
-  cola.push({tipo:'llegada',ts:new Date().toISOString(),quien:me,evento_id:e.id,lugar:e.lugar,fecha:e.fecha,gps:pos?{lat:+pos[0].toFixed(5),lng:+pos[1].toFixed(5)}:null,dist_m:llegadas[e.id].dist_m,manual:!!manual});
+  cola.push({id:`${me}|${e.id}|llegada`,tipo:'llegada',ts:new Date().toISOString(),quien:me,evento_id:e.id,lugar:e.lugar,fecha:e.fecha,gps:pos?{lat:+pos[0].toFixed(5),lng:+pos[1].toFixed(5)}:null,dist_m:llegadas[e.id].dist_m,manual:!!manual});
   ls.set('eq_cola',JSON.stringify(cola.slice(-200)));
   toast(`Llegaste a ${e.lugar} a las ${llegadas[e.id].hora}`);
+  enviarCola();
+}
+// Manda lo pendiente a la hoja; lo que la hoja confirma sale de la cola. Sin señal, reintenta al volver.
+async function enviarCola(){
+  if(!REGISTRO_URL||enviarCola.yendo) return;
+  let cola=[];try{cola=JSON.parse(ls.get('eq_cola')||'[]')}catch(x){}
+  if(!cola.length) return;
+  enviarCola.yendo=true;
+  try{
+    const r=await fetch(REGISTRO_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(cola.slice(0,50))});
+    const j=await r.json(), ok=new Set(j.ok||[]);
+    let ahora=[];try{ahora=JSON.parse(ls.get('eq_cola')||'[]')}catch(x){}
+    ls.set('eq_cola',JSON.stringify(ahora.filter(x=>!ok.has(x.id))));
+  }catch(err){}
+  enviarCola.yendo=false;
 }
 function revisarLlegadas(){
   if(!S||!me||!pos) return false;
@@ -435,9 +452,11 @@ document.addEventListener('submit',async ev=>{
     catch(e){token=null;errLock=e.status===401?'Esa clave no es válida.':'Esa clave no tiene permiso para escribir en el repositorio.';render()}
   }
 });
+window.addEventListener('online',()=>enviarCola());
 window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();instalar=e;if(S)render()});
 window.addEventListener('beforeunload',e=>{if(dirty){e.preventDefault();e.returnValue=''}});
 document.addEventListener('visibilitychange',async()=>{
+  if(document.visibilityState==='visible')enviarCola();
   if(document.visibilityState!=='visible'||!S||!codigo||dirty||tab==='form')return;
   try{const n=await descifrar(await bajar(),codigo);if(n.actualizado!==S.actualizado||JSON.stringify(n)!==JSON.stringify(S)){S=n;render();toast('Agenda actualizada')}}catch(e){}
 });
@@ -451,5 +470,6 @@ if('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch
   if(tab==='armar'&&!owner)tab='dia';
   if(codigo&&await abrir(codigo)){if(me&&!S.equipo.includes(me))me=null}else{S=null;if(codigo)errLock=errLock||'Ingresá de nuevo el código del equipo.'}
   render();
+  enviarCola();
 })();
 })();
