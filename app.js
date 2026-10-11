@@ -6,7 +6,7 @@ const $=s=>document.querySelector(s);
 const ls={get(k){try{return localStorage.getItem(k)}catch(e){return null}},set(k,v){try{v==null?localStorage.removeItem(k):localStorage.setItem(k,v)}catch(e){}}};
 
 let S=null, codigo=ls.get('eq_codigo'), me=ls.get('eq_yo'), tab=ls.get('eq_tab')||'dia';
-let agVista=ls.get('eq_agvista')||'semana', agQuien=null, agCursor=null, agDia=null, pos=null, geoEstado='no', errYo='';
+let agVista=ls.get('eq_agvista')||'semana', agQuien=null, agCursor=null, agDia=null, pos=null, precision=null, geoEstado='no', errYo='', diaSel=null;
 let editId=null, dirty=false, token=ls.get('eq_token'), owner=!!token, nuevoCodigo=null, errLock='', instalar=null;
 
 /* ---------- cifrado: PBKDF2-SHA256 + AES-GCM ---------- */
@@ -53,7 +53,6 @@ const mios=()=>futuros().filter(e=>me&&(e.equipo||[]).includes(me));
 const I={
  map:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></svg>',
  ok:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>',
- copy:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h8"/></svg>',
  sun:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>',
  cal:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>',
  list:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4.5" cy="6" r="1.2"/><circle cx="4.5" cy="12" r="1.2"/><circle cx="4.5" cy="18" r="1.2"/></svg>',
@@ -105,31 +104,50 @@ function seguirUbicacion(){
   if(!navigator.geolocation||geoEstado==='si') return;
   geoEstado='pidiendo';
   navigator.geolocation.watchPosition(p=>{
-    const nuevo=!pos; pos=[p.coords.latitude,p.coords.longitude]; geoEstado='si'; ls.set('eq_geo_ok','1');
-    if(nuevo&&tab!=='form'){render()}
+    const nuevo=!pos; pos=[p.coords.latitude,p.coords.longitude]; precision=p.coords.accuracy||null; geoEstado='si'; ls.set('eq_geo_ok','1');
+    const marco=revisarLlegadas();
+    if((nuevo||marco||Date.now()-(seguirUbicacion.t||0)>60000)&&tab!=='form'){seguirUbicacion.t=Date.now();render()}
   },err=>{geoEstado=err.code===1?'negado':'no';if(tab!=='form')render()},{enableHighAccuracy:true,maximumAge:30000,timeout:20000});
 }
 function bannerUbicacion(){
   if(geoEstado==='si'||geoEstado==='pidiendo'||!navigator.geolocation) return '';
-  if(geoEstado==='negado') return `<div class="banner"><strong>La app no tiene permiso para ver tu ubicación.</strong><span>Sin eso no puede decirte a cuántos km estás de cada teatro. Activalo en los ajustes del navegador para este sitio.</span></div>`;
-  return `<div class="install"><strong>Activá tu ubicación</strong><span>Así ves a cuántos km estás de cada teatro y evitás ir a uno con nombre parecido. Solo se usa con la app abierta.</span><div class="row"><button class="btn small primary" data-geo>Activar ubicación</button></div></div>`;
+  if(geoEstado==='negado') return `<div class="aviso warn">${I.map}<div><strong>La app no puede ver tu ubicación</strong><span>Sin eso no se marca sola tu llegada. Permitila en los ajustes del navegador para este sitio.</span></div></div>`;
+  return `<div class="aviso">${I.map}<div><strong>Activá tu ubicación</strong><span>Tu llegada se marca sola cuando estás en el teatro, y ves a cuántos km estás.</span></div><button class="btn small primary" data-geo>Activar</button></div>`;
 }
 
-/* ---------- hoja de opciones ---------- */
-function hoja(html){const h=$('#hoja');h.innerHTML=`<div class="hoja-in" role="dialog" aria-modal="true">${html}<button class="btn" data-cerrar-hoja>Cancelar</button></div>`;h.hidden=false}
-function cerrarHoja(){const h=$('#hoja');h.hidden=true;h.innerHTML=''}
-function opcionesIr(id){
-  const e=S.eventos.find(x=>x.id===id); if(!e)return;
-  const c=coordsDe(e), q=encodeURIComponent(dirDe(e));
-  const ios=/iphone|ipad|ipod/i.test(navigator.userAgent);
-  const g='https://www.google.com/maps/dir/?api=1&travelmode=transit&destination='+q;
-  const w=c?`https://waze.com/ul?ll=${c[0]},${c[1]}&navigate=yes`:`https://waze.com/ul?q=${q}&navigate=yes`;
-  const a='https://maps.apple.com/?daddr='+q;
-  hoja(`<h2>Cómo llegar a ${esc(e.lugar)}</h2><p class="addr">${esc(e.direccion||'Sin dirección cargada')}</p>${distHTML(e)}
-   <a class="btn primary" href="${g}" target="_blank" rel="noopener">Abrir en Google Maps</a>
-   <a class="btn" href="${w}" target="_blank" rel="noopener">Abrir en Waze</a>
-   ${ios?`<a class="btn" href="${a}" target="_blank" rel="noopener">Abrir en Mapas de Apple</a>`:''}
-   <button class="btn" data-copiar="${e.id}">${I.copy}Copiar dirección</button>`);
+/* ---------- llegadas: se marcan solas por cercanía ---------- */
+const RADIO_KM=0.15;
+let llegadas=(()=>{try{return JSON.parse(ls.get('eq_llegadas')||'{}')}catch(e){return {}}})();
+function registrarLlegada(e,manual){
+  const d=distDe(e);
+  llegadas[e.id]={hora:ahoraHM(),ts:hoyISO()+'T'+ahoraHM(),manual:!!manual,dist_m:d==null?null:Math.round(d*1000)};
+  ls.set('eq_llegadas',JSON.stringify(llegadas));
+  // Cola para mandar al panel cuando esté conectado (formato acordado con el panel central).
+  let cola=[];try{cola=JSON.parse(ls.get('eq_cola')||'[]')}catch(x){}
+  cola.push({tipo:'llegada',ts:new Date().toISOString(),quien:me,evento_id:e.id,lugar:e.lugar,fecha:e.fecha,gps:pos?{lat:+pos[0].toFixed(5),lng:+pos[1].toFixed(5)}:null,dist_m:llegadas[e.id].dist_m,manual:!!manual});
+  ls.set('eq_cola',JSON.stringify(cola.slice(-200)));
+  toast(`Llegaste a ${e.lugar} a las ${llegadas[e.id].hora}`);
+}
+function revisarLlegadas(){
+  if(!S||!me||!pos) return false;
+  const hoy=hoyISO(), radio=Math.max(RADIO_KM,Math.min(precision||0,250)/1000);
+  let marco=false;
+  mios().filter(e=>e.fecha===hoy&&!llegadas[e.id]).forEach(e=>{const d=distDe(e);if(d!=null&&d<=radio){registrarLlegada(e,false);marco=true}});
+  return marco;
+}
+function estadoLlegada(e){
+  const l=llegadas[e.id], hoy=hoyISO(), mia=me&&(e.equipo||[]).includes(me), d=distDe(e);
+  if(l) return `<div class="estado ok">${I.ok}<span>Llegaste a las <b>${esc(l.hora)}</b></span></div>`;
+  if(e.fecha!==hoy||!mia) return d!=null?`<div class="estado">${I.map}<span>Estás a <b>${fmtDist(d)}</b></span></div>`:'';
+  if(d!=null) return `<div class="estado">${I.map}<span>Estás a <b>${fmtDist(d)}</b>. Tu llegada se marca sola al llegar.</span></div>`;
+  if(geoEstado==='si'&&!coordsDe(e)) return `<div class="estado off"><span>Este teatro todavía no tiene ubicación cargada.</span><button class="link" data-marcar="${e.id}">Marcar llegada a mano</button></div>`;
+  if(geoEstado==='negado') return `<div class="estado off"><span>Sin permiso de ubicación.</span><button class="link" data-marcar="${e.id}">Marcar llegada a mano</button></div>`;
+  if(geoEstado==='si'||geoEstado==='pidiendo') return `<div class="estado off"><span>Buscando tu ubicación…</span></div>`;
+  return `<div class="estado off"><span>Activá la ubicación y tu llegada se marca sola.</span><button class="btn small primary" data-geo>Activar</button></div>`;
+}
+function mapsIr(e){
+  const dest=e.lat!=null?`${e.lat},${e.lng}`:dirDe(e);
+  return 'https://www.google.com/maps/dir/?api=1&travelmode=transit&destination='+encodeURIComponent(dest);
 }
 
 function toast(t){const el=$('#toast');el.textContent=t;el.hidden=false;clearTimeout(toast.h);toast.h=setTimeout(()=>el.hidden=true,2800)}
@@ -152,7 +170,7 @@ function vistaLock(){
   return `<section class="card lock" style="align-items:center;text-align:center">
    <img class="logo" src="icons/logo.png" alt="Blanco Flor">
    <h1>Equipo de ramos</h1>
-   <p class="sub">Ingresá el código del equipo. Te lo pasa Pablo.</p>
+   <p class="sub">Ingresá el código del equipo.</p>
    <form id="f-codigo" style="width:100%">
     <input id="codigo" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="Código del equipo" aria-label="Código del equipo" required>
     ${errLock?`<p class="err" role="alert">${esc(errLock)}</p>`:''}
@@ -164,34 +182,25 @@ function horaBloque(e){
   if(e.funcion) return `<span class="label">La función empieza</span><div class="when"><span class="big">${esc(e.funcion)}</span></div>`;
   return `<div class="when"><span class="big tbd">Horario a confirmar</span></div><p class="sub">Pablo carga la hora apenas la tenga. Volvé a abrir la app antes de salir.</p>`;
 }
-function ramosHTML(r){
-  r=r||{}; const t=(r.c||0)+(r.m||0)+(r.g||0);
-  if(!t) return '<span class="sub">Pablo carga la cantidad antes de salir.</span>';
-  return `<div class="ramos"><span class="ramo"><b>${r.c||0}</b> chicos</span><span class="ramo"><b>${r.m||0}</b> medianos</span><span class="ramo"><b>${r.g||0}</b> grandes</span></div>`;
-}
 const pills=e=>`<div class="row">${e.prio==='ir'?'<span class="pill ir">Ir seguro</span>':'<span class="pill probar">De prueba</span>'}${e.confirmado?'':'<span class="pill conf">Datos a confirmar</span>'}</div>`;
 function tarjeta(e,hero){
-  const eq=e.equipo||[], comp=eq.filter(n=>n!==me);
-  return `<article class="card${hero?' hero':''}">
+  const eq=e.equipo||[], comp=eq.filter(n=>n!==me), r=e.ramos||{}, tr=(r.c||0)+(r.m||0)+(r.g||0);
+  const conQuien=comp.length?esc(comp.join(', ')):(eq.length?'Vas solo/a':'<span style="color:var(--warn);font-weight:700">Sin asignar</span>');
+  const ramos=tr?[r.c?`${r.c} chicos`:'',r.m?`${r.m} medianos`:'',r.g?`${r.g} grandes`:''].filter(Boolean).join(' · '):'<span class="sub">Pablo carga la cantidad antes de salir</span>';
+  return `<article class="card fn${hero?' hero':''}${llegadas[e.id]?' llegado':''}">
    ${pills(e)}<div>${horaBloque(e)}</div>
    <div><div class="place">${esc(e.lugar)}</div><div class="addr">${esc(e.direccion)}</div></div>
-   ${distHTML(e)}
-   <div class="row">
-    <button class="btn primary" data-ir="${e.id}">${I.map}Cómo llegar</button>
-    <button class="btn" data-llegue="${e.id}">${I.ok}Avisar que llegué</button>
-   </div>
-   <dl class="facts"><dt>Qué es</dt><dd>${esc(e.que)}</dd>
-    <dt>Vas con</dt><dd>${comp.length?esc(comp.join(', ')):(eq.length?'Vas solo/a':'<span class="err" style="color:var(--warn)">Sin asignar</span>')}</dd></dl>
-   <div class="field"><span class="label">Ramos que se llevan</span>${ramosHTML(e.ramos)}</div>
+   ${estadoLlegada(e)}
+   <a class="btn primary" href="${mapsIr(e)}" target="_blank" rel="noopener">${I.map}Cómo llegar</a>
+   <dl class="facts"><dt>Vas con</dt><dd>${conQuien}</dd><dt>Ramos</dt><dd>${ramos}</dd>${e.que?`<dt>Qué es</dt><dd>${esc(e.que)}</dd>`:''}</dl>
    ${e.nota?`<div class="nota">${esc(e.nota)}</div>`:''}
-   <div class="row"><button class="btn small" data-copiar="${e.id}">${I.copy}Copiar dirección</button></div>
   </article>`;
 }
 function mini(e,attr){
   const eq=e.equipo||[], sin=!eq.length;
   return `<button class="card mini${sin?' unassigned':''}" ${attr}="${e.id}">
    <span class="t">${esc(e.llegada||e.funcion||'¿?')}</span>
-   <span style="min-width:0"><span class="place">${esc(e.lugar)}</span>${distHTML(e,true)}
+   <span style="min-width:0"><span class="place">${esc(e.lugar)}</span>${llegadas[e.id]?`<span class="dist cerca">Llegaste ${esc(llegadas[e.id].hora)}</span>`:distHTML(e,true)}
    <span class="who-l">${sin?'Sin asignar':esc(eq.join(', '))}${e.confirmado?'':' · a confirmar'}</span></span></button>`;
 }
 function porDia(list,fn){
@@ -202,22 +211,28 @@ function bannerInstalar(){
   const standalone=matchMedia('(display-mode: standalone)').matches||navigator.standalone;
   if(standalone||ls.get('eq_noinst')) return '';
   const ios=/iphone|ipad|ipod/i.test(navigator.userAgent);
-  const txt=ios?'En Safari, tocá el botón Compartir (el cuadrado con la flecha) y después "Agregar a inicio".':(instalar?'Instalala para abrirla con un toque, como cualquier app.':'En Chrome, tocá los tres puntos y después "Instalar app" o "Agregar a pantalla principal".');
-  return `<div class="install"><strong>Poné la app en tu pantalla de inicio</strong><span>${txt}</span><div class="row">${instalar&&!ios?'<button class="btn small primary" data-instalar>Instalar</button>':''}<button class="btn small" data-noinst>Listo</button></div></div>`;
+  const txt=ios?'En Safari: Compartir y después "Agregar a inicio".':(instalar?'Abrila con un toque, como cualquier app.':'En Chrome: los tres puntos y "Instalar app".');
+  return `<div class="aviso"><div><strong>Instalá la app</strong><span>${txt}</span></div>${instalar&&!ios?'<button class="btn small primary" data-instalar>Instalar</button>':''}<button class="x" data-noinst aria-label="Ocultar">×</button></div>`;
 }
 function vistaQuien(){
-  return `${bannerInstalar()}<section class="card"><h2>¿Quién sos?</h2><p class="sub">Escribí tu nombre como te lo pasó Pablo. El celular se acuerda la próxima vez.</p>
+  return `${bannerInstalar()}<section class="card"><h2>¿Quién sos?</h2><p class="sub">Escribí tu nombre. El celular se acuerda la próxima vez.</p>
   <form id="f-yo"><input id="yo" autocomplete="given-name" autocapitalize="words" placeholder="Tu nombre" aria-label="Tu nombre" required>
   ${errYo?`<p class="err" role="alert">${esc(errYo)}</p>`:''}
   <button class="btn primary" type="submit">Listo</button></form></section>`;
 }
 function vistaDia(){
   if(!me) return vistaQuien();
-  const hoy=hoyISO(), m=mios(), deHoy=m.filter(e=>e.fecha===hoy);
-  let h=`<div class="marca">Blanco <span>Flor</span><small>Equipo</small></div>${bannerInstalar()}${bannerUbicacion()}<div class="top"><div><h1>Hola, ${esc(me)}</h1><div class="hoy">Hoy es ${fechaLarga(hoy)}</div></div><button class="chip" data-cambiar>Cambiar</button></div>${tiraSemana(m)}`;
-  if(deHoy.length) h+=`<span class="label">Tu día</span>`+deHoy.map((e,i)=>tarjeta(e,i===0)).join('');
-  else if(m.length) h+=`<div class="card empty" style="padding:18px"><strong>Hoy no tenés funciones.</strong><span>La próxima es el ${fechaLarga(m[0].fecha)}:</span></div>`+tarjeta(m[0],true);
-  else h+=`<div class="card empty"><strong>Todavía no tenés funciones asignadas.</strong><span>Cuando Pablo te asigne una, aparece acá con la hora y cómo llegar.</span></div>`;
+  const hoy=hoyISO(), m=mios();
+  if(!diaSel||diaSel<hoy) diaSel=hoy;
+  const del=m.filter(e=>e.fecha===diaSel);
+  let h=`<div class="marca">Blanco<span>Flor</span><small>Equipo</small></div>${bannerInstalar()}${bannerUbicacion()}
+  <div class="top"><div><h1>Hola, ${esc(me)}</h1><div class="hoy">Hoy es ${fechaLarga(hoy)}</div></div><button class="chip" data-cambiar>Cambiar</button></div>${tiraSemana(m)}`;
+  h+=`<div class="dayhead">${diaSel===hoy?'Tu día':fechaLarga(diaSel)}</div>`;
+  if(del.length) h+=del.map((e,i)=>tarjeta(e,diaSel===hoy&&i===0)).join('');
+  else{
+    const prox=m.find(e=>e.fecha>diaSel);
+    h+=`<div class="card empty"><strong>${diaSel===hoy?'Hoy no tenés funciones.':'Ese día estás libre.'}</strong>${prox?`<button class="link" data-dia-sel="${prox.fecha}">La próxima es el ${fechaLarga(prox.fecha)}</button>`:'<span>Cuando Pablo te asigne una, aparece acá con la hora y cómo llegar.</span>'}</div>`;
+  }
   return h;
 }
 function vistaSemana(){
@@ -229,7 +244,7 @@ function vistaSemana(){
 function tiraSemana(list){
   const hoy=hoyISO(), dias=[...Array(7)].map((_,i)=>addDias(hoy,i));
   return `<div class="tira" aria-label="Tus próximos 7 días">${dias.map(d=>{const n=list.filter(e=>e.fecha===d).length;
-   return `<button class="tdia${n?' con':''}${d===hoy?' hoyd':''}" data-ag-ir="${d}"><span>${d===hoy?'Hoy':DIAS[diaSem(d)]}</span><b>${+d.slice(8)}</b><i>${n?n+(n>1?' func.':' func.'):'libre'}</i></button>`}).join('')}</div>`;
+   return `<button class="tdia${n?' con':''}${d===hoy?' hoyd':''}" data-dia-sel="${d}" aria-pressed="${d===(diaSel||hoy)}"><span>${d===hoy?'Hoy':DIAS[diaSem(d)]}</span><b>${+d.slice(8)}</b><i>${n?n+' func.':'libre'}</i></button>`}).join('')}</div>`;
 }
 function vistaAgenda(){
   const hoy=hoyISO();
@@ -282,7 +297,6 @@ function vistaArmar(){
   <section class="card"><h2>Equipo</h2>
    <div class="who">${S.equipo.map(n=>`<span class="chip" style="cursor:default;display:inline-flex;align-items:center;gap:6px">${esc(n)}<button class="btn small danger" style="min-height:28px;padding:2px 9px" data-quitar="${esc(n)}" aria-label="Quitar a ${esc(n)}">×</button></span>`).join('')}</div>
    <form id="f-persona" class="row" style="flex-direction:row"><input id="nueva-persona" placeholder="Nombre" style="flex:1 1 160px" autocomplete="off" aria-label="Nombre de la persona"><button class="btn small primary" type="submit">Sumar</button></form>
-   <div class="field"><label for="wa">Tu WhatsApp para recibir "Llegué"</label><input id="wa" inputmode="tel" value="${esc(S.whatsapp)}" placeholder="Ej. 5491122334455"><span class="hint">Con código de país y sin el 15. Si lo dejás vacío, cada uno elige el chat.</span></div>
    <div class="field"><label for="nuevo-codigo">Cambiar el código del equipo</label><input id="nuevo-codigo" autocomplete="off" autocapitalize="none" placeholder="Dejalo vacío para mantener el actual"><span class="hint">Si lo cambiás, pasáselo de nuevo a todos.</span></div>
   </section>
   <button class="btn primary" data-editar="nuevo">+ Nueva función</button>
@@ -329,30 +343,6 @@ function render(){
 function ir(t){tab=t;errLock='';if(['dia','semana','agenda','armar'].includes(t))ls.set('eq_tab',t);render();window.scrollTo(0,0)}
 
 /* ---------- acciones ---------- */
-function llegue(id,igual){
-  const e=S.eventos.find(x=>x.id===id); if(!e)return;
-  const d=distDe(e);
-  if(!igual&&d!=null&&d>=0.6){
-    hoja(`<h2>Estás a ${fmtDist(d)} de ${esc(e.lugar)}</h2><p>Puede que estés en otra sala con un nombre parecido. Revisá la dirección: <strong>${esc(e.direccion||'sin dirección')}</strong>.</p>
-     <button class="btn primary" data-ir="${e.id}">${I.map}Ver cómo llegar</button><button class="btn" data-llegue-igual="${e.id}">Avisar igual que llegué</button>`);
-    return;
-  }
-  const mandar=pos=>{
-    let txt=`Llegué a ${e.lugar} a las ${ahoraHM()}.${me?' '+me:''}`;
-    if(pos){const c=coordsDe(e);txt+=`\nUbicación: https://maps.google.com/?q=${pos.coords.latitude.toFixed(5)},${pos.coords.longitude.toFixed(5)}`;
-     if(c)txt+=` (a ${fmtDist(km([pos.coords.latitude,pos.coords.longitude],c))} del teatro)`}
-    const n=(S.whatsapp||'').replace(/\D/g,'');
-    const url=(n?`https://wa.me/${n}`:'https://wa.me/')+'?text='+encodeURIComponent(txt);
-    if(window.eqAbrirWhatsApp)window.eqAbrirWhatsApp(url,txt);else location.href=url;
-  };
-  if(!navigator.geolocation){mandar(null);return}
-  toast('Buscando tu ubicación…');
-  navigator.geolocation.getCurrentPosition(mandar,()=>mandar(null),{enableHighAccuracy:true,timeout:8000,maximumAge:60000});
-}
-function copiar(id){
-  const e=S.eventos.find(x=>x.id===id), t=e.direccion||e.lugar;
-  (navigator.clipboard?navigator.clipboard.writeText(t):Promise.reject()).then(()=>toast('Dirección copiada'),()=>toast(t));
-}
 function leerCoords(t){
   const m=String(t||'').match(/(-?\d{1,2}\.\d+)\s*,\s*(-?\d{1,3}\.\d+)/);
   return m?[+(+m[1]).toFixed(6),+(+m[2]).toFixed(6)]:null;
@@ -387,7 +377,6 @@ async function gh(path,opt={}){
 }
 async function publicar(btn){
   btn.disabled=true; btn.textContent='Publicando…';
-  const wa=$('#wa'); if(wa)S.whatsapp=wa.value.trim();
   const nc=$('#nuevo-codigo'); const cod=(nc&&nc.value.trim())?nc.value.trim():codigo;
   S.actualizado=hoyISO()+'T'+ahoraHM();
   try{
@@ -405,13 +394,11 @@ async function publicar(btn){
 }
 
 document.addEventListener('click',ev=>{
-  if(ev.target.id==='hoja'){cerrarHoja();return}
   const b=ev.target.closest('button'); if(!b)return;
   const d=b.dataset;
   if(d.tab) ir(d.tab);
-  else if('cerrarHoja' in d) cerrarHoja();
-  else if(d.ir){cerrarHoja();opcionesIr(d.ir)}
-  else if(d.llegueIgual){cerrarHoja();llegue(d.llegueIgual,true)}
+  else if(d.diaSel){diaSel=d.diaSel;if(tab!=='dia')ir('dia');else render()}
+  else if(d.marcar){const e=S.eventos.find(x=>x.id===d.marcar);if(e){registrarLlegada(e,true);render()}}
   else if('geo' in d){seguirUbicacion();render()}
   else if('ubicar' in d) ubicarForm(b);
   else if(d.agVista){agVista=d.agVista;ls.set('eq_agvista',agVista);render()}
@@ -419,10 +406,8 @@ document.addEventListener('click',ev=>{
   else if(d.agMover){agCursor=addDias(agCursor||hoyISO(),+d.agMover);render()}
   else if(d.agMes){const [y,m]=(agCursor||hoyISO()).split('-').map(Number);agCursor=new Date(Date.UTC(y,m-1+(+d.agMes),1)).toISOString().slice(0,10);agDia=null;render()}
   else if(d.agDia){agDia=d.agDia;render()}
-  else if(d.agIr){agCursor=d.agIr;agDia=d.agIr;agVista='semana';ir('agenda')}
+
   else if('cambiar' in d){me=null;ls.set('eq_yo',null);render()}
-  else if(d.llegue) llegue(d.llegue);
-  else if(d.copiar){cerrarHoja();copiar(d.copiar)}
   else if(d.ver){editId=d.ver;ir('detalle')}
   else if(d.editar){editId=d.editar;ir('form')}
   else if(d.asignar) b.setAttribute('aria-pressed',b.getAttribute('aria-pressed')==='true'?'false':'true');
@@ -440,7 +425,7 @@ document.addEventListener('submit',async ev=>{
   if(f.id==='f-codigo'){const btn=f.querySelector('button');btn.disabled=true;btn.textContent='Abriendo…';await abrir($('#codigo').value);render()}
   else if(f.id==='f-yo'){
     const t=sinTilde($('#yo').value), n=S.equipo.find(x=>sinTilde(x)===t)||S.equipo.find(x=>sinTilde(x).split(' ')[0]===t.split(' ')[0]);
-    if(n){me=n;errYo='';ls.set('eq_yo',me);render()}else{errYo='No encontramos ese nombre en el equipo. Escribilo como te lo pasó Pablo o pedile que te sume.';render()}
+    if(n){me=n;errYo='';ls.set('eq_yo',me);render()}else{errYo='No encontramos ese nombre en el equipo. Revisá cómo lo escribiste.';render()}
   }
   else if(f.id==='f-persona'){const n=$('#nueva-persona').value.trim();if(n&&!S.equipo.includes(n)){S.equipo.push(n);dirty=true}render()}
   else if(f.id==='f-evento') guardarForm(f);

@@ -7,7 +7,7 @@
   --ok:#1D7A46; --ok-soft:#E3F3E9;
   --f-display:"Figtree",system-ui,-apple-system,"Segoe UI",sans-serif;
   --f-script:"Yellowtail","Brush Script MT",cursive;
-  --f-body:"Atkinson Hyperlegible",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --f-body:"Figtree",system-ui,-apple-system,"Segoe UI",sans-serif;
   color-scheme:light;
 }
 @media (prefers-color-scheme: dark){:root{
@@ -93,8 +93,8 @@ textarea{min-height:80px;resize:vertical}
 @media (max-width:380px){.big{font-size:2.2rem}.grid3{grid-template-columns:1fr 1fr}}
 
 /* marca */
-.marca{display:flex;align-items:baseline;gap:8px;font-family:var(--f-script);font-size:1.6rem;line-height:1;color:var(--stem)}
-.marca span{color:var(--ink)}
+.marca{display:flex;align-items:baseline;font-family:var(--f-script);font-size:1.75rem;line-height:1;color:var(--stem);padding-top:2px}
+.marca span{color:var(--ink);margin-left:.16em}
 .marca small{font-family:var(--f-body);font-size:.75rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-left:auto}
 /* distancia */
 .dist{display:inline-flex;align-items:center;gap:6px;font-weight:700;color:var(--ink);font-variant-numeric:tabular-nums}
@@ -111,7 +111,9 @@ textarea{min-height:80px;resize:vertical}
 .tdia i{font-style:normal;font-size:.68rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
 .tdia.con{border-color:var(--stem);background:var(--stem-soft)}
 .tdia.con i{color:var(--stem);font-weight:700}
-.tdia.hoyd{outline:2px solid var(--ink);outline-offset:-2px}
+.tdia.hoyd span{color:var(--ink)}
+.tdia[aria-pressed="true"]{background:var(--ink);border-color:var(--ink);color:var(--bg)}
+.tdia[aria-pressed="true"] b,.tdia[aria-pressed="true"] span,.tdia[aria-pressed="true"] i{color:var(--bg)}
 /* agenda */
 .ctrl{justify-content:space-between}
 .seg{display:inline-flex;background:var(--petal-soft);border-radius:999px;padding:3px;gap:2px}
@@ -135,3 +137,30 @@ textarea{min-height:80px;resize:vertical}
 .hoja{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:flex-end;justify-content:center;z-index:10}
 .hoja-in{background:var(--surface);width:100%;max-width:560px;border-radius:18px 18px 0 0;padding:18px 16px calc(16px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;gap:10px;max-height:85vh;overflow:auto}
 a{color:var(--stem)}
+
+/* avisos compactos (instalar, ubicación) */
+.aviso{display:flex;align-items:center;gap:12px;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:10px 12px}
+.aviso>svg{width:22px;height:22px;flex:none;color:var(--stem)}
+.aviso>div{display:flex;flex-direction:column;gap:1px;flex:1;min-width:0;font-size:.92rem}
+.aviso>div span{color:var(--muted);line-height:1.3}
+.aviso.warn{background:var(--warn-soft);border-color:transparent}
+.aviso.warn>svg{color:var(--warn)}
+.aviso .btn.small{flex:none}
+.x{border:0;background:none;color:var(--muted);font-size:1.4rem;line-height:1;width:36px;height:36px;border-radius:999px;cursor:pointer;flex:none}
+/* tarjeta de función */
+.card.fn{gap:14px;padding:18px}
+.card.fn .place{font-size:1.35rem}
+.card.fn .btn.primary{flex:none;width:100%}
+.card.fn .facts{border-top:1px solid var(--line);padding-top:12px;font-size:.95rem}
+.card.hero{border:2px solid var(--ink);box-shadow:0 6px 18px rgba(20,17,17,.08)}
+.card.llegado{border-color:var(--ok)}
+.estado{display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:var(--bg);border-radius:12px;padding:10px 12px;font-size:.95rem}
+.estado>svg{width:20px;height:20px;flex:none;color:var(--stem)}
+.estado>span{flex:1;min-width:0}
+.estado.ok{background:var(--ok-soft);color:var(--ok);font-weight:700}
+.estado.ok>svg{color:var(--ok)}
+.estado.off{color:var(--muted)}
+.estado .link{padding:4px 0;font-size:.9rem}
+.estado .btn.small{flex:none}
+.dayhead{font-size:1.05rem;color:var(--ink)}
+.empty .link{font-size:.95rem;color:var(--stem);font-weight:700}
