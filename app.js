@@ -5,6 +5,8 @@ const REPO='devoto2/Test', ARCHIVO='agenda.enc.json', ITER=310000;
 // Hoja de Google de Pablo que recibe las llegadas (Apps Script, solo agrega filas).
 const REGISTRO_URL='https://script.google.com/macros/s/AKfycbxJyFxYtxpFDxBllGxZJBe3BIJaneVgdDO8CUGvwSQL92g5GBvCxig6wtvSDMEg5m64/exec';
 const $=s=>document.querySelector(s);
+// La página scrollea dentro de #scroller: así en iPhone el contenido nunca pasa por debajo de la hora y la batería.
+const SC=()=>document.getElementById('scroller')||document.scrollingElement;
 const ls={get(k){try{return localStorage.getItem(k)}catch(e){return null}},set(k,v){try{v==null?localStorage.removeItem(k):localStorage.setItem(k,v)}catch(e){}}};
 
 let S=null, codigo=ls.get('eq_codigo'), me=ls.get('eq_yo'), miPin=ls.get('eq_pin'), tab='dia';
@@ -379,7 +381,7 @@ function vistaAgenda(){
     h+=gridMes(base,tb,agCursor,sel,'ag');
     h+=`<section class="daygroup"><div class="dayhead">${sel===hoy?'Hoy, ':''}${fechaLarga(sel)}</div>${delDia(sel)}</section>`;
   }
-  return h+`<div class="row" style="justify-content:center">${owner||sinTilde(me||'')!=='pablo'?'':'<button class="link" data-modo-pablo>Armar la agenda</button>'}<button class="link" data-salir>Cerrar sesión en este celular</button></div>`;
+  return h+`<div class="links-pie">${owner||sinTilde(me||'')!=='pablo'?'':'<button class="link" data-modo-pablo>Armar la agenda</button>'}<button class="link" data-salir>Cerrar sesión en este celular</button></div>`;
 }
 function vistaDetalleT(){
   const t=(S.tareas||[]).find(x=>x.id===editId); if(!t) return vistaAgenda();
@@ -484,12 +486,12 @@ function render(){
 // "Volver" regresa a la pestaña y a la altura de pantalla desde donde se abrió el detalle.
 let yoEscrito='', previo=null, scrollPrevio=0;
 // Re-dibuja sin mover la pantalla.
-function quieto(){const y=window.scrollY;render();window.scrollTo(0,y)}
+function quieto(){const y=SC().scrollTop;render();SC().scrollTo(0,y)}
 function ir(t){
   const principal=['dia','agenda','armar'];
-  if(!principal.includes(t)&&principal.includes(tab)){previo=tab;scrollPrevio=window.scrollY}
+  if(!principal.includes(t)&&principal.includes(tab)){previo=tab;scrollPrevio=SC().scrollTop}
   const vuelve=principal.includes(t)&&t===previo&&!principal.includes(tab);
-  tab=t;errLock='';if(principal.includes(t))ls.set('eq_tab',t);render();window.scrollTo(0,vuelve?scrollPrevio:0);
+  tab=t;errLock='';if(principal.includes(t))ls.set('eq_tab',t);render();SC().scrollTo(0,vuelve?scrollPrevio:0);
 }
 
 /* ---------- acciones ---------- */
@@ -564,7 +566,7 @@ document.addEventListener('click',ev=>{
   else if(d.agMes){agDia=null;const [y,m]=(agCursor||hoyISO()).split('-').map(Number);agCursor=new Date(Date.UTC(y,m-1+(+d.agMes),1)).toISOString().slice(0,10);agDia=null;render()}
   else if(d.agDia){agDia=d.agDia;quieto()}
 
-  else if(d.terminar){const e=S.eventos.find(x=>x.id===d.terminar);if(e){terminar(e,true);render();const c=document.querySelector('.card.fn.hero');if(c)window.scrollTo(0,Math.max(0,c.getBoundingClientRect().top+window.scrollY-90))}}
+  else if(d.terminar){const e=S.eventos.find(x=>x.id===d.terminar);if(e){terminar(e,true);render();const c=document.querySelector('.card.fn.hero');if(c)SC().scrollTo(0,Math.max(0,c.getBoundingClientRect().top+SC().scrollTop-90))}}
   else if(d.reabrir){const e=S.eventos.find(x=>x.id===d.reabrir);if(e){terminar(e,false);quieto()}}
   else if('cambiar' in d){if(!b.dataset.seguro){b.dataset.seguro='1';b.textContent='Tocá de nuevo para salir';setTimeout(()=>{if(b.isConnected){delete b.dataset.seguro;b.textContent='No soy '+me}},4000);return}me=null;miPin=null;ls.set('eq_yo',null);ls.set('eq_pin',null);render()}
   else if(d.ojo){const i=document.getElementById(d.ojo);if(i){const ver=i.type==='password';i.type=ver?'text':'password';b.innerHTML=ver?I.ojoNo:I.ojo;b.setAttribute('aria-label',ver?'Ocultar':'Mostrar');i.focus()}}
