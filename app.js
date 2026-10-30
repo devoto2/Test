@@ -124,7 +124,7 @@ function seguirUbicacion(){
 function bannerUbicacion(){
   if(geoEstado==='si'||geoEstado==='pidiendo'||!navigator.geolocation) return '';
   if(geoEstado==='negado') return `<div class="aviso warn">${I.map}<div><strong>La app no puede ver tu ubicación</strong><span>Sin eso no se marca sola tu llegada. Permitila en los ajustes del navegador para este sitio.</span></div></div>`;
-  return `<div class="aviso">${I.map}<div><strong>Activá tu ubicación</strong><span>Tu llegada se marca sola cuando estás en el teatro, y ves a cuántos km estás.</span></div><button class="btn small primary" data-geo>Activar</button></div>`;
+  return `<div class="aviso">${I.map}<div><strong>Activá tu ubicación</strong><span>Para marcar tu llegada sola.</span></div><button class="btn small primary" data-geo>Activar</button></div>`;
 }
 
 /* ---------- tareas de producción ---------- */
@@ -232,6 +232,19 @@ const campoOculto=(id,ph,extra='')=>`<div class="oculto"><input id="${id}" type=
 // PIN personal: cada uno entra con su nombre y su PIN, así nadie puede hacerse pasar por otro.
 const pinDe=n=>(S.pines||{})[n]||'';
 const pinNuevo=()=>String(crypto.getRandomValues(new Uint32Array(1))[0]%10000).padStart(4,'0');
+// Cambios de día, hora o lugar desde la última vez que este celular vio la agenda (se muestran 24 h).
+let vistos=(()=>{try{return JSON.parse(ls.get('eq_vistos')||'{}')}catch(e){return {}}})();
+function registrarCambios(){
+  if(!S) return 0; const primera=!Object.keys(vistos).length, ahora=Date.now(); let n=0;
+  S.eventos.forEach(e=>{
+    const a={f:e.fecha,h:e.llegada||e.funcion||e.horario||'',l:e.lugar}, v=vistos[e.id];
+    if(!v){vistos[e.id]={...a,t:0};return}
+    const que=v.f!==a.f?'de día':v.h!==a.h?'de hora':v.l!==a.l?'de lugar':'';
+    if(que&&!primera){vistos[e.id]={...a,t:ahora,que};if((e.equipo||[]).includes(me))n++}
+  });
+  ls.set('eq_vistos',JSON.stringify(vistos)); return n;
+}
+const cambioDe=e=>{const v=vistos[e.id];return v&&v.t&&Date.now()-v.t<864e5?v.que:''};
 function validarYo(){if(me&&(!S.equipo.includes(me)||!pinDe(me)||pinDe(me)!==miPin)){me=null;miPin=null;ls.set('eq_yo',null);ls.set('eq_pin',null)}}
 function vistaLock(){
   return `<section class="card lock" style="align-items:center;text-align:center">
@@ -244,23 +257,23 @@ function vistaLock(){
    </form></section>`;
 }
 function horaBloque(e){
-  if(e.llegada) return `<span class="label">Llegar a las</span><div class="when"><span class="big">${esc(e.llegada)}</span>${e.funcion?`<span class="sub">la función empieza ${esc(e.funcion)}</span>`:''}</div>`;
-  if(e.funcion) return `<span class="label">La función empieza</span><div class="when"><span class="big">${esc(e.funcion)}</span></div>`;
-  if(e.horario) return `<span class="label">Horario</span><div class="when"><span class="big">${esc(e.horario)}</span></div>`;
-  return `<div class="when"><span class="big tbd">Horario a confirmar</span></div><p class="sub">Pablo carga la hora apenas la tenga. Volvé a abrir la app antes de salir.</p>`;
+  if(e.llegada) return `<div class="when"><span class="big">${esc(e.llegada)}</span><span class="sub">llegá${e.funcion?` · empieza ${esc(e.funcion)}`:''}</span></div>`;
+  if(e.funcion) return `<div class="when"><span class="big">${esc(e.funcion)}</span><span class="sub">empieza</span></div>`;
+  if(e.horario) return `<div class="when"><span class="big mid">${esc(e.horario)}</span></div>`;
+  return `<div class="when"><span class="big mid tbd">Hora a confirmar</span></div>`;
 }
-const pills=e=>`<div class="row">${e.importante?'<span class="pill top">El más importante</span>':''}${e.prio==='ir'?'<span class="pill ir">Ir seguro</span>':'<span class="pill probar">De prueba</span>'}${e.confirmado?'':'<span class="pill conf">Datos a confirmar</span>'}</div>`;
-function tarjeta(e,hero){
-  const eq=e.equipo||[], comp=eq.filter(n=>n!==me), r=e.ramos||{}, tr=(r.c||0)+(r.m||0)+(r.g||0);
-  const conQuien=comp.length?esc(comp.join(', ')):(eq.length?'Vas solo/a':'<span style="color:var(--warn);font-weight:700">Sin asignar</span>');
-  const ramos=tr?[r.c?`${r.c} chicos`:'',r.m?`${r.m} medianos`:'',r.g?`${r.g} grandes`:''].filter(Boolean).join(' · '):'<span class="sub">Pablo carga la cantidad antes de salir</span>';
+const pills=e=>{const c=cambioDe(e);const p=(e.importante?'<span class="pill top">Importante</span>':'')+(c?`<span class="pill cambio">Cambió ${esc(c)}</span>`:'');return p?`<div class="row">${p}</div>`:''};
+function tarjeta(e,hero,paso){
+  const comp=(e.equipo||[]).filter(n=>n!==me), r=ramosTxt(e.ramos);
+  const datos=[r?`<li><b>Ramos:</b> ${r}</li>`:'',comp.length?`<li><b>Con:</b> ${esc(comp.join(', '))}</li>`:''].join('');
   return `<article class="card fn${hero?' hero':''}${llegadas[e.id]?' llegado':''}">
-   ${pills(e)}<div>${horaBloque(e)}</div>
-   <div><div class="place">${esc(e.lugar)}</div><div class="addr">${esc(e.direccion)}</div></div>
-   ${estadoLlegada(e)}
+   ${paso?`<span class="paso">${paso}</span>`:''}${pills(e)}
+   <div class="place">${esc(e.lugar)}</div>
+   ${horaBloque(e)}
+   ${datos?`<ul class="datos">${datos}</ul>`:''}
    <a class="btn primary" href="${mapsIr(e)}" target="_blank" rel="noopener">${I.map}Cómo llegar</a>
-   <dl class="facts"><dt>Vas con</dt><dd>${conQuien}</dd><dt>Ramos</dt><dd>${ramos}</dd>${e.que?`<dt>Qué es</dt><dd>${esc(e.que)}</dd>`:''}</dl>
-   ${e.nota?`<div class="nota">${esc(e.nota)}</div>`:''}
+   ${estadoLlegada(e)}
+   ${e.nota||e.que||e.direccion?`<details class="mas"><summary>Más info</summary>${e.direccion?`<div class="addr">${esc(e.direccion)}</div>`:''}${e.que?`<p>${esc(e.que)}</p>`:''}${e.nota?`<div class="nota">${esc(e.nota)}</div>`:''}${e.confirmado?'':'<p class="sub">Puede cambiar: Pablo lo confirma.</p>'}</details>`:''}
   </article>`;
 }
 function mini(e,attr){
@@ -268,7 +281,7 @@ function mini(e,attr){
   return `<button class="card mini${sin?' unassigned':''}" ${attr}="${e.id}">
    <span class="t">${esc(e.llegada||e.funcion||e.horario||'¿?')}</span>
    <span style="min-width:0"><span class="place">${esc(e.lugar)}</span>${llegadas[e.id]?`<span class="dist cerca">Llegaste ${esc(llegadas[e.id].hora)}</span>`:(distDe(e)!=null?`<span class="dist" data-km="${e.id}">${fmtDist(distDe(e))}</span>`:'')}
-   <span class="who-l">${sin?'Sin asignar':esc(eq.join(', '))}${e.confirmado?'':' · a confirmar'}</span></span></button>`;
+   <span class="who-l">${sin?'Sin asignar':esc(eq.join(', '))}</span></span></button>`;
 }
 function porDia(list,fn){
   const g={};list.forEach(e=>(g[e.fecha]=g[e.fecha]||[]).push(e));
@@ -292,17 +305,18 @@ function vistaDia(){
   if(!me) return vistaQuien();
   const hoy=hoyISO(), m=mios(), mt=misTareas();
   if(!diaSel||diaSel<hoy) diaSel=hoy;
-  const del=m.filter(e=>e.fecha===diaSel).sort((a,b)=>(b.importante?1:0)-(a.importante?1:0)), tdel=mt.filter(t=>t.fecha===diaSel);
+  const del=m.filter(e=>e.fecha===diaSel).sort((a,b)=>(a.orden||99)-(b.orden||99)||(b.importante?1:0)-(a.importante?1:0)), tdel=mt.filter(t=>t.fecha===diaSel);
   let h=`<div class="marca">Blanco<span>Flor</span><small>Equipo</small></div>${bannerInstalar()}${bannerUbicacion()}
-  <div class="top"><div><h1>Hola, ${esc(me)}</h1><div class="hoy">Hoy es ${fechaLarga(hoy)}</div></div><button class="chip" data-cambiar>Cambiar</button></div>`;
-  h+=`<div class="top"><div class="dayhead">${diaSel===hoy?'Tu día':fechaLarga(diaSel)}</div>${diaSel!==hoy?'<button class="chip" data-dia-sel="hoy">Volver a hoy</button>':''}</div>`;
-  if(del.length) h+=del.map((e,i)=>tarjeta(e,diaSel===hoy&&i===0)).join('');
+  <div class="top"><h1>Hola, ${esc(me)}</h1><button class="chip" data-cambiar>No soy ${esc(me)}</button></div>`;
+  h+=`<div class="top"><div class="dayhead grande">${diaSel===hoy?'Hoy':diaSel===addDias(hoy,1)?'Mañana':fechaLarga(diaSel)}</div>${diaSel!==hoy?'<button class="chip" data-dia-sel="hoy">Hoy</button>':''}</div>`;
+  if(del.length>1) h+=`<p class="sub">${del.length} lugares. Empezá por el 1.</p>`;
+  if(del.length) h+=del.map((e,i)=>tarjeta(e,i===0,del.length>1?(i+1)+'°':'')).join('');
   if(tdel.length) h+=`<span class="label">Producción</span>`+tdel.map(tarjetaTarea).join('');
   if(!del.length&&!tdel.length){
     const prox=m.find(e=>e.fecha>diaSel);
-    h+=`<div class="card empty"><strong>${diaSel===hoy?'Hoy no tenés nada asignado.':'Ese día estás libre.'}</strong>${prox?`<button class="link" data-dia-sel="${prox.fecha}">La próxima función es el ${fechaLarga(prox.fecha)}</button>`:'<span>Cuando Pablo te asigne algo, aparece acá.</span>'}</div>`;
+    h+=`<div class="card empty"><strong>${diaSel===hoy?'Hoy no tenés nada.':'Ese día no tenés nada.'}</strong>${prox?`<button class="btn primary" data-dia-sel="${prox.fecha}">Ver ${prox.fecha===addDias(hoy,1)?'mañana':fechaLarga(prox.fecha)}</button>`:''}</div>`;
   }
-  h+=`<section class="cal"><div class="top"><div class="dayhead">${verMes?'Tu mes':'Tu semana'}</div><button class="chip" data-ver-mes>${verMes?'Ver semana':'Ver mes'}</button></div>`;
+  h+=`<section class="cal"><div class="top"><div class="dayhead">${verMes?'El mes':'Próximos días'}</div><button class="chip" data-ver-mes>${verMes?'Ver semana':'Ver mes'}</button></div>`;
   h+=verMes?gridMes(m,mt,mdCursor||hoy,diaSel,'md'):tiraSemana(m,mt);
   return h+`</section>`;
 }
@@ -319,7 +333,7 @@ function gridMes(evs,tars,cursor,sel,pref){
 function tiraSemana(list,tars){
   const hoy=hoyISO(), dias=[...Array(7)].map((_,i)=>addDias(hoy,i));
   return `<div class="tira" aria-label="Tus próximos 7 días">${dias.map(d=>{const c=cuenta(d,list,tars);
-   return `<button class="tdia${c.n?' con':''}${d===hoy?' hoyd':''}" data-dia-sel="${d}" aria-pressed="${d===(diaSel||hoy)}"><span>${d===hoy?'Hoy':DIAS[diaSem(d)]}</span><b>${+d.slice(8)}</b><i>${c.n?c.n+' func.':(c.t?'prod.':'libre')}</i>${c.t?'<u></u>':''}</button>`}).join('')}</div>`;
+   return `<button class="tdia${c.n?' con':''}${d===hoy?' hoyd':''}" data-dia-sel="${d}" aria-pressed="${d===(diaSel||hoy)}"><span>${d===hoy?'Hoy':DIAS[diaSem(d)]}</span><b>${+d.slice(8)}</b><i>${c.n?'●'.repeat(Math.min(c.n,3)):(c.t?'·':'')}</i>${c.t?'<u></u>':''}</button>`}).join('')}</div>`;
 }
 function vistaAgenda(){
   const hoy=hoyISO();
@@ -553,20 +567,21 @@ document.addEventListener('submit',async ev=>{
 window.addEventListener('online',()=>enviarCola());
 window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();instalar=e;if(S)render()});
 window.addEventListener('beforeunload',e=>{if(dirty){e.preventDefault();e.returnValue=''}});
-document.addEventListener('visibilitychange',async()=>{
-  if(document.visibilityState==='visible')enviarCola();
+async function refrescar(){
   if(document.visibilityState!=='visible'||!S||!codigo||dirty||tab==='form'||tab==='formt')return;
-  try{const n=await descifrar(await bajar(),codigo);if(n.actualizado!==S.actualizado||JSON.stringify(n)!==JSON.stringify(S)){S=n;validarYo();render();toast('Agenda actualizada')}}catch(e){}
-});
+  try{const n=await descifrar(await bajar(),codigo);if(JSON.stringify(n)!==JSON.stringify(S)){S=n;validarYo();const c=registrarCambios();render();toast(c?'⚠ Cambió algo tuyo: mirá la tarjeta marcada':'Agenda actualizada')}}catch(e){}
+}
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'){enviarCola();refrescar()}});
+setInterval(refrescar,60000);
 if('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(()=>{});
 
 (async()=>{
   if(tab==='equipo')tab='agenda';
   if(!['dia','agenda','armar'].includes(tab))tab='dia';
-  if(ls.get('eq_geo_ok'))seguirUbicacion();
+  if(ls.get('eq_geo_ok')&&me)seguirUbicacion();
   else if(navigator.permissions&&navigator.permissions.query)navigator.permissions.query({name:'geolocation'}).then(p=>{if(p.state==='granted')seguirUbicacion();else if(p.state==='denied'){geoEstado='negado';if(S)render()}}).catch(()=>{});
   if(tab==='armar'&&!owner)tab='dia';
-  if(codigo&&await abrir(codigo)){validarYo()}else{S=null;if(codigo)errLock=errLock||'Ingresá de nuevo el código del equipo.'}
+  if(codigo&&await abrir(codigo)){validarYo();registrarCambios()}else{S=null;if(codigo)errLock=errLock||'Ingresá de nuevo el código del equipo.'}
   render();
   enviarCola();
 })();

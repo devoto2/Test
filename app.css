@@ -188,3 +188,12 @@ a{color:var(--stem)}
 .ojo{position:absolute;right:4px;top:50%;transform:translateY(-50%);width:44px;height:40px;border:0;background:none;color:var(--muted);display:grid;place-items:center;cursor:pointer}
 .ojo svg{width:22px;height:22px}
 .pill.top{background:var(--stem);color:var(--stem-ink)}
+.big.mid{font-size:1.9rem}
+.pill.cambio{background:var(--warn);color:#fff}
+.paso{align-self:flex-start;background:var(--ink);color:var(--bg);font-weight:800;border-radius:8px;padding:2px 10px;font-size:.95rem}
+.card.fn .place{font-size:1.6rem}
+.dayhead.grande{font-size:1.4rem;color:var(--ink)}
+.datos{list-style:none;margin:0;padding:0;display:flex;flex-wrap:wrap;gap:6px 16px}
+.mas summary{cursor:pointer;color:var(--muted);font-weight:700;padding:4px 0}
+.mas[open]{display:flex;flex-direction:column;gap:8px}
+.tdia i{min-height:1em;color:var(--stem);letter-spacing:2px}
