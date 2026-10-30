@@ -8,7 +8,7 @@ const $=s=>document.querySelector(s);
 const ls={get(k){try{return localStorage.getItem(k)}catch(e){return null}},set(k,v){try{v==null?localStorage.removeItem(k):localStorage.setItem(k,v)}catch(e){}}};
 
 let S=null, codigo=ls.get('eq_codigo'), me=ls.get('eq_yo'), miPin=ls.get('eq_pin'), tab=ls.get('eq_tab')||'dia';
-let agVista=ls.get('eq_agvista')||'semana', agQuien=null, agCursor=null, agDia=null, pos=null, precision=null, geoEstado='no', errYo='', diaSel=null, verMes=ls.get('eq_vermes')==='1', mdCursor=null;
+let agVista=ls.get('eq_agvista2')||'mes', agQuien=null, agCursor=null, agDia=null, pos=null, precision=null, geoEstado='no', errYo='', diaSel=null, verMes=ls.get('eq_vermes')==='1', mdCursor=null;
 let editId=null, dirty=false, token=ls.get('eq_token'), owner=!!token, nuevoCodigo=null, errLock='', instalar=null;
 
 /* ---------- cifrado: PBKDF2-SHA256 + AES-GCM ---------- */
@@ -48,7 +48,8 @@ function fmtActualizado(a){
   const [f,h]=String(a).split('T'); const fecha=f.split('-').reverse().join('/');
   return h?`${fecha} a las ${h.slice(0,5)}`:fecha;
 }
-const ord=(a,b)=>(a.fecha+(a.llegada||a.funcion||'99')).localeCompare(b.fecha+(b.llegada||b.funcion||'99'));
+// Por día; dentro del día, el orden que pone Pablo y después la hora.
+const ord=(a,b)=>a.fecha.localeCompare(b.fecha)||(a.orden||99)-(b.orden||99)||(a.llegada||a.funcion||'99').localeCompare(b.llegada||b.funcion||'99');
 const futuros=()=>S.eventos.filter(e=>e.fecha>=hoyISO()).sort(ord);
 const mios=()=>futuros().filter(e=>me&&(e.equipo||[]).includes(me));
 const ordT=(a,b)=>(a.fecha+(a.hasta||'99')).localeCompare(b.fecha+(b.hasta||'99'));
@@ -301,7 +302,7 @@ function tarjeta(e,hero,paso){
 function mini(e,attr){
   const eq=e.equipo||[], sin=!eq.length;
   return `<button class="card mini${sin?' unassigned':''}" ${attr}="${e.id}">
-   <span class="t">${esc(e.llegada||e.funcion||e.horario||'¿?')}</span>
+   <span class="t${e.llegada||e.funcion?'':' txt'}">${esc(e.llegada||e.funcion||e.horario||'¿?')}</span>
    <span style="min-width:0"><span class="place">${esc(e.lugar)}</span>${llegadas[e.id]?`<span class="dist cerca">Llegaste ${esc(llegadas[e.id].hora)}</span>`:(distDe(e)!=null?`<span class="dist" data-km="${e.id}">${fmtDist(distDe(e))}</span>`:'')}
    <span class="who-l">${sin?'Sin asignar':esc(eq.join(', '))}</span></span></button>`;
 }
@@ -330,6 +331,7 @@ function vistaDia(){
   const del=m.filter(e=>e.fecha===diaSel).sort((a,b)=>(a.orden||99)-(b.orden||99)||(b.importante?1:0)-(a.importante?1:0)), tdel=mt.filter(t=>t.fecha===diaSel);
   let h=`<div class="marca">Blanco<span>Flor</span><small>Equipo</small></div>${bannerInstalar()}${bannerUbicacion()}
   <div class="top"><h1>Hola, ${esc(me)}</h1><button class="chip" data-cambiar>No soy ${esc(me)}</button></div>`;
+  h+=`<section class="cal"><div class="top"><span class="label">${verMes?'El mes':'Tus días'}</span><button class="chip small" data-ver-mes>${verMes?'Ver semana':'Ver mes'}</button></div>${verMes?gridMes(m,mt,mdCursor||hoy,diaSel,'md'):tiraSemana(m,mt)}</section>`;
   h+=`<div class="top"><div class="dayhead grande">${diaSel===hoy?'Hoy':diaSel===addDias(hoy,1)?'Mañana':fechaLarga(diaSel)}</div>${diaSel!==hoy?'<button class="chip" data-dia-sel="hoy">Hoy</button>':''}</div>`;
   if(del.length>1) h+=pasoAPaso(del);
   else if(del.length) h+=tarjeta(del[0],true,'');
@@ -338,9 +340,7 @@ function vistaDia(){
     const prox=m.find(e=>e.fecha>diaSel);
     h+=`<div class="card empty"><strong>${diaSel===hoy?'Hoy no tenés nada.':'Ese día no tenés nada.'}</strong>${prox?`<button class="btn primary" data-dia-sel="${prox.fecha}">Ver ${prox.fecha===addDias(hoy,1)?'mañana':fechaLarga(prox.fecha)}</button>`:''}</div>`;
   }
-  h+=`<section class="cal"><div class="top"><div class="dayhead">${verMes?'El mes':'Próximos días'}</div><button class="chip" data-ver-mes>${verMes?'Ver semana':'Ver mes'}</button></div>`;
-  h+=verMes?gridMes(m,mt,mdCursor||hoy,diaSel,'md'):tiraSemana(m,mt);
-  return h+`</section>`;
+  return h;
 }
 function cuenta(d,evs,tars){return {n:evs.filter(e=>e.fecha===d).length,t:tars.filter(t=>t.fecha===d).length}}
 function gridMes(evs,tars,cursor,sel,pref){
@@ -366,11 +366,11 @@ function vistaAgenda(){
   const delDia=d=>{const ev=base.filter(e=>e.fecha===d), tt=tb.filter(t=>t.fecha===d);
     return ev.length||tt.length?ev.map(e=>mini(e,'data-ver')).join('')+tt.map(t=>miniTarea(t,owner?'data-editar-t':'data-ver-t')).join(''):'<div class="libre">Libre</div>'};
   let h=`<h1>Equipo</h1><div class="hoy">${f.length} funciones por delante${sin?` · <strong style="color:var(--warn)">${sin} sin asignar</strong>`:''}</div>
-  <div class="row ctrl"><div class="seg">${seg('semana','Semana')}${seg('mes','Mes')}</div></div>`;
+  <div class="row ctrl"><div class="seg">${seg('mes','Mes')}${seg('semana','Semana')}</div></div>`;
   if(agVista==='semana'){
-    const l=lunes(agCursor), dias=[...Array(7)].map((_,i)=>addDias(l,i));
+    const l=agCursor<hoy?hoy:agCursor, dias=[...Array(7)].map((_,i)=>addDias(l,i));
     const tit=`${+l.slice(8)} de ${MESES[+l.slice(5,7)-1]} al ${+dias[6].slice(8)} de ${MESES[+dias[6].slice(5,7)-1]}`;
-    h+=`<div class="nav"><button class="chip" data-ag-mover="-7" aria-label="Semana anterior">‹</button><strong>${tit}</strong><button class="chip" data-ag-mover="7" aria-label="Semana siguiente">›</button></div>`;
+    h+=`<div class="nav"><button class="chip" data-ag-mover="-7" aria-label="Semana anterior"${l<=hoy?' disabled':''}>‹</button><strong>${tit}</strong><button class="chip" data-ag-mover="7" aria-label="Semana siguiente">›</button></div>`;
     h+=dias.map(d=>`<section class="daygroup${d<hoy?' pasado':''}"><div class="dayhead">${d===hoy?'Hoy, ':''}${fechaLarga(d)}</div>${delDia(d)}</section>`).join('');
   }else{
     const mes=agCursor.slice(0,7), sel=agDia&&agDia.startsWith(mes)?agDia:(hoy.startsWith(mes)?hoy:mes+'-01');
@@ -381,11 +381,11 @@ function vistaAgenda(){
 }
 function vistaDetalleT(){
   const t=(S.tareas||[]).find(x=>x.id===editId); if(!t) return vistaAgenda();
-  return `<div class="top"><button class="chip" data-tab="agenda">← Volver</button></div><div class="dayhead">${fechaLarga(t.fecha)}</div>`+tarjetaTarea(t);
+  return `<div class="top"><button class="chip" data-tab="${previo||'agenda'}">← Volver</button></div><div class="dayhead">${fechaLarga(t.fecha)}</div>`+tarjetaTarea(t);
 }
 function vistaDetalle(){
   const e=S.eventos.find(x=>x.id===editId); if(!e) return vistaAgenda();
-  return `<div class="top"><button class="chip" data-tab="agenda">← Volver</button>${owner?`<button class="chip" data-editar="${e.id}">Editar</button>`:''}</div>
+  return `<div class="top"><button class="chip" data-tab="${previo||'agenda'}">← Volver</button>${owner?`<button class="chip" data-editar="${e.id}">Editar</button>`:''}</div>
   <div class="dayhead">${fechaLarga(e.fecha)}</div>`+tarjeta(e,true);
 }
 function vistaPablo(){
@@ -478,7 +478,14 @@ function render(){
   $('#app').innerHTML=(V[tab]||vistaDia)()+`<p class="foot">Agenda actualizada el ${esc(fmtActualizado(S.actualizado))}</p>`+tabs();
   ubicarFaltantes();
 }
-function ir(t){tab=t;errLock='';if(['dia','agenda','armar'].includes(t))ls.set('eq_tab',t);render();window.scrollTo(0,0)}
+// "Volver" regresa a la pestaña y a la altura de pantalla desde donde se abrió el detalle.
+let previo=null, scrollPrevio=0;
+function ir(t){
+  const principal=['dia','agenda','armar'];
+  if(!principal.includes(t)&&principal.includes(tab)){previo=tab;scrollPrevio=window.scrollY}
+  const vuelve=principal.includes(t)&&t===previo&&!principal.includes(tab);
+  tab=t;errLock='';if(principal.includes(t))ls.set('eq_tab',t);render();window.scrollTo(0,vuelve?scrollPrevio:0);
+}
 
 /* ---------- acciones ---------- */
 function leerCoords(t){
@@ -535,10 +542,10 @@ document.addEventListener('click',ev=>{
   const b=ev.target.closest('button'); if(!b)return;
   const d=b.dataset;
   if(d.tab) ir(d.tab);
-  else if(d.diaSel){diaSel=d.diaSel==='hoy'?hoyISO():d.diaSel;if(tab!=='dia')ir('dia');else{render();window.scrollTo({top:0,behavior:'smooth'})}}
+  else if(d.diaSel){diaSel=d.diaSel==='hoy'?hoyISO():d.diaSel;if(tab!=='dia')ir('dia');else{const y=window.scrollY;render();window.scrollTo(0,Math.min(y,0))}}
   else if('verMes' in d){verMes=!verMes;ls.set('eq_vermes',verMes?'1':null);render()}
   else if(d.mdMes){const [y,m]=(mdCursor||hoyISO()).split('-').map(Number);mdCursor=new Date(Date.UTC(y,m-1+(+d.mdMes),1)).toISOString().slice(0,10);render()}
-  else if(d.mdDia){diaSel=d.mdDia<hoyISO()?hoyISO():d.mdDia;render();window.scrollTo({top:0,behavior:'smooth'})}
+  else if(d.mdDia){diaSel=d.mdDia<hoyISO()?hoyISO():d.mdDia;mdCursor=diaSel;render();const h=document.querySelector('.dayhead.grande');if(h)h.scrollIntoView({block:'start',behavior:'smooth'})}
   else if(d.hecha){const t=(S.tareas||[]).find(x=>x.id===d.hecha);if(t){marcarHecha(t,true);render()}}
   else if(d.deshacer){const t=(S.tareas||[]).find(x=>x.id===d.deshacer);if(t){marcarHecha(t,false);render()}}
   else if(d.verT){editId=d.verT;ir('detallet')}
@@ -547,10 +554,10 @@ document.addEventListener('click',ev=>{
   else if(d.marcar){const e=S.eventos.find(x=>x.id===d.marcar);if(e){registrarLlegada(e,true);render()}}
   else if('geo' in d){seguirUbicacion();render()}
   else if('ubicar' in d) ubicarForm(b);
-  else if(d.agVista){agVista=d.agVista;ls.set('eq_agvista',agVista);render()}
-  else if(d.agMover){agCursor=addDias(agCursor||hoyISO(),+d.agMover);render()}
+  else if(d.agVista){agVista=d.agVista;ls.set('eq_agvista2',agVista);render()}
+  else if(d.agMover){const h0=hoyISO();agCursor=addDias(agCursor<h0?h0:(agCursor||h0),+d.agMover);if(agCursor<h0)agCursor=h0;render()}
   else if(d.agMes){const [y,m]=(agCursor||hoyISO()).split('-').map(Number);agCursor=new Date(Date.UTC(y,m-1+(+d.agMes),1)).toISOString().slice(0,10);agDia=null;render()}
-  else if(d.agDia){agDia=d.agDia;render()}
+  else if(d.agDia){agDia=d.agDia;agCursor=d.agDia;render();const g=document.querySelector('.daygroup');if(g)g.scrollIntoView({block:'start',behavior:'smooth'})}
 
   else if(d.terminar){const e=S.eventos.find(x=>x.id===d.terminar);if(e){terminar(e,true);render();window.scrollTo({top:0,behavior:'smooth'})}}
   else if(d.reabrir){const e=S.eventos.find(x=>x.id===d.reabrir);if(e){terminar(e,false);render()}}
@@ -565,7 +572,7 @@ document.addEventListener('click',ev=>{
   else if('publicar' in d) publicar(b);
   else if('modoPablo' in d) ir('pablo');
   else if('sinPablo' in d){token=null;owner=false;ls.set('eq_token',null);ir('agenda')}
-  else if('salir' in d){if(b.dataset.seguro){['eq_codigo','eq_yo','eq_pin','eq_token','eq_tab','eq_agvista','eq_vermes'].forEach(k=>ls.set(k,null));location.reload()}else{b.dataset.seguro='1';b.textContent='Tocá de nuevo para cerrar sesión'}}
+  else if('salir' in d){if(b.dataset.seguro){['eq_codigo','eq_yo','eq_pin','eq_token','eq_tab','eq_agvista2','eq_vermes','eq_terminados','eq_vistos'].forEach(k=>ls.set(k,null));location.reload()}else{b.dataset.seguro='1';b.textContent='Tocá de nuevo para cerrar sesión'}}
   else if('instalar' in d&&instalar){instalar.prompt();instalar=null}
   else if('noinst' in d){ls.set('eq_noinst','1');render()}
 });
