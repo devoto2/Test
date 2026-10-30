@@ -49,7 +49,8 @@ function fmtActualizado(a){
   return h?`${fecha} a las ${h.slice(0,5)}`:fecha;
 }
 // Por día; dentro del día, el orden que pone Pablo y después la hora.
-const ord=(a,b)=>a.fecha.localeCompare(b.fecha)||(a.orden||99)-(b.orden||99)||(a.llegada||a.funcion||'99').localeCompare(b.llegada||b.funcion||'99');
+const ord=(a,b)=>a.fecha.localeCompare(b.fecha)||(a.orden||99)-(b.orden||99)||hh(a).localeCompare(hh(b));
+function hh(e){return (e.llegada||e.funcion||'99:99').padStart(5,'0')}
 const futuros=()=>S.eventos.filter(e=>e.fecha>=hoyISO()).sort(ord);
 const mios=()=>futuros().filter(e=>me&&(e.equipo||[]).includes(me));
 const ordT=(a,b)=>(a.fecha+(a.hasta||'99')).localeCompare(b.fecha+(b.hasta||'99'));
@@ -138,13 +139,14 @@ function terminar(e,si){
   enviarCola();
 }
 function pasoAPaso(lista){
-  const n=lista.length, hechos=lista.filter(e=>terminados[e.id]).length, act=lista.findIndex(e=>!terminados[e.id]);
-  let h=`<div class="pasos" aria-label="Paso ${Math.min(hechos+1,n)} de ${n}">${lista.map((e,i)=>`<span class="${terminados[e.id]?'ok':i===act?'ahora':''}"></span>`).join('')}</div>`;
-  h+=`<p class="sub">${act<0?'Terminaste todo el día. ¡Gracias!':`Lugar ${act+1} de ${n}`}</p>`;
+  const n=lista.length, esHoy=lista[0].fecha===hoyISO();
+  const act=esHoy?lista.findIndex(e=>!terminados[e.id]):0, hechos=esHoy?lista.filter(e=>terminados[e.id]).length:0;
+  let h=`<div class="pasos" aria-label="${n} lugares">${lista.map((e,i)=>`<span class="${esHoy&&terminados[e.id]?'ok':i===act?'ahora':''}"></span>`).join('')}</div>`;
+  h+=`<p class="sub">${!esHoy?`${n} lugares. Empezás por el 1°.`:act<0?'Terminaste todo el día. ¡Gracias!':`Lugar ${act+1} de ${n}`}</p>`;
   lista.forEach((e,i)=>{
     const num=(i+1)+'°';
-    if(terminados[e.id]) h+=`<div class="fila hecho"><span class="num">${I.ok}</span><span class="place">${esc(e.lugar)}</span><span class="sub">listo ${esc(terminados[e.id].hora)}</span><button class="link" data-reabrir="${e.id}">Deshacer</button></div>`;
-    else if(i===act) h+=tarjeta(e,true,'Ahora · '+num).replace('</article>',`${i<n-1?`<button class="btn" data-terminar="${e.id}">${I.ok}Terminé acá, voy al ${i+2}°</button>`:`<button class="btn" data-terminar="${e.id}">${I.ok}Terminé el día</button>`}</article>`);
+    if(esHoy&&terminados[e.id]) h+=`<div class="fila hecho"><span class="num">${I.ok}</span><span class="place">${esc(e.lugar)}</span><span class="sub">listo ${esc(terminados[e.id].hora)}</span><button class="link" data-reabrir="${e.id}">Deshacer</button></div>`;
+    else if(i===act) h+=tarjeta(e,true,(esHoy?'Ahora · ':'')+num).replace('</article>',esHoy?`<button class="btn" data-terminar="${e.id}">${I.ok}${i<n-1?`Terminé acá, voy al ${i+2}°`:'Terminé el día'}</button></article>`:'</article>');
     else h+=`<button class="fila" data-ver="${e.id}"><span class="num">${num}</span><span class="place">${esc(e.lugar)}</span><span class="sub">${esc(e.llegada||e.funcion||e.horario||'')}</span></button>`;
   });
   return h;
@@ -230,7 +232,7 @@ function estadoLlegada(e){
   return `<div class="estado off"><span>Activá la ubicación y tu llegada se marca sola.</span><button class="btn small primary" data-geo>Activar</button></div>`;
 }
 function mapsIr(e){
-  const dest=e.lat!=null?`${e.lat},${e.lng}`:dirDe(e);
+  const dest=dirDe(e)||`${e.lat},${e.lng}`;
   return 'https://www.google.com/maps/dir/?api=1&travelmode=transit&destination='+encodeURIComponent(dest);
 }
 
@@ -245,7 +247,7 @@ async function bajar(){
 async function abrir(cod){
   let f;
   try{f=await bajar()}catch(e){errLock='No se pudo bajar la agenda. Revisá la conexión.';return false}
-  try{S=await descifrar(f,cod);codigo=cod;ls.set('eq_codigo',cod);errLock='';return true}
+  try{S=await descifrar(f,cod);codigo=cod;ls.set('eq_codigo',cod);errLock='';registrarCambios();return true}
   catch(e){errLock='Ese código no es correcto.';return false}
 }
 
@@ -319,7 +321,7 @@ function bannerInstalar(){
 }
 function vistaQuien(){
   return `${bannerInstalar()}<section class="card"><h2>Entrar</h2>
-  <form id="f-yo"><input id="yo" autocomplete="given-name" autocapitalize="words" placeholder="Nombre" aria-label="Nombre" required>
+  <form id="f-yo"><input id="yo" autocomplete="given-name" autocapitalize="words" placeholder="Nombre" aria-label="Nombre" value="${esc(yoEscrito)}" required>
   ${campoOculto('pin','PIN','inputmode="numeric" maxlength="8"')}
   ${errYo?`<p class="err" role="alert">${esc(errYo)}</p>`:''}
   <button class="btn primary" type="submit">Entrar</button></form></section>`;
@@ -348,7 +350,7 @@ function gridMes(evs,tars,cursor,sel,pref){
   let h=`<div class="nav"><button class="chip" data-${pref}-mes="-1" aria-label="Mes anterior">‹</button><strong class="mest">${MESES[+mes.slice(5)-1]} ${mes.slice(0,4)}</strong><button class="chip" data-${pref}-mes="1" aria-label="Mes siguiente">›</button></div>`;
   h+=`<div class="mes" role="grid">${DIAS.map(d=>`<span class="mh">${d[0]}</span>`).join('')}`;
   for(let i=0;i<42;i++){const d=addDias(ini,i); if(i>=35&&!d.startsWith(mes))break;
-    const c=cuenta(d,evs,tars), fuera=!d.startsWith(mes);
+    const c=cuenta(d,evs,tars), fuera=!d.startsWith(mes)&&!c.n&&!c.t;
     h+=`<button class="md${fuera?' fuera':''}${d===hoy?' hoyd':''}${d===sel?' sel':''}${d<hoy?' pasado':''}" data-${pref}-dia="${d}" aria-label="${fechaLarga(d)}: ${c.n} funciones, ${c.t} tareas"><b>${+d.slice(8)}</b>${c.n?`<i>${c.n}</i>`:''}${c.t?'<u></u>':''}</button>`}
   return h+`</div><div class="leyenda"><span class="lf">Funciones</span><span class="lt">Producción</span></div>`;
 }
@@ -377,7 +379,7 @@ function vistaAgenda(){
     h+=gridMes(base,tb,agCursor,sel,'ag');
     h+=`<section class="daygroup"><div class="dayhead">${sel===hoy?'Hoy, ':''}${fechaLarga(sel)}</div>${delDia(sel)}</section>`;
   }
-  return h+`<div class="row" style="justify-content:center">${owner?'':'<button class="link" data-modo-pablo>Soy Pablo: armar la agenda</button>'}<button class="link" data-salir>Cerrar sesión en este celular</button></div>`;
+  return h+`<div class="row" style="justify-content:center">${owner||sinTilde(me||'')!=='pablo'?'':'<button class="link" data-modo-pablo>Armar la agenda</button>'}<button class="link" data-salir>Cerrar sesión en este celular</button></div>`;
 }
 function vistaDetalleT(){
   const t=(S.tareas||[]).find(x=>x.id===editId); if(!t) return vistaAgenda();
@@ -470,7 +472,7 @@ function vistaForm(){
 function tabs(){
   const t=[['dia','Mi día',I.sun],['agenda','Equipo',I.team]];
   if(owner)t.push(['armar','Armar',I.edit]);
-  return `<nav class="tabs" role="tablist"><div class="tabs-in">${t.map(([k,l,ic])=>`<button class="tab" role="tab" data-tab="${k}" aria-selected="${tab===k}">${ic}${l}</button>`).join('')}</div></nav>`;
+  return `<nav class="tabs" role="tablist"><div class="tabs-in">${t.map(([k,l,ic])=>`<button class="tab" role="tab" data-tab="${k}" aria-selected="${tab===k||(!['dia','agenda','armar'].includes(tab)&&previo===k)}">${ic}${l}</button>`).join('')}</div></nav>`;
 }
 function render(){
   if(!S){$('#app').innerHTML=vistaLock();return}
@@ -479,7 +481,9 @@ function render(){
   ubicarFaltantes();
 }
 // "Volver" regresa a la pestaña y a la altura de pantalla desde donde se abrió el detalle.
-let previo=null, scrollPrevio=0;
+let yoEscrito='', previo=null, scrollPrevio=0;
+// Re-dibuja sin mover la pantalla.
+function quieto(){const y=window.scrollY;render();window.scrollTo(0,y)}
 function ir(t){
   const principal=['dia','agenda','armar'];
   if(!principal.includes(t)&&principal.includes(tab)){previo=tab;scrollPrevio=window.scrollY}
@@ -542,10 +546,10 @@ document.addEventListener('click',ev=>{
   const b=ev.target.closest('button'); if(!b)return;
   const d=b.dataset;
   if(d.tab) ir(d.tab);
-  else if(d.diaSel){diaSel=d.diaSel==='hoy'?hoyISO():d.diaSel;if(tab!=='dia')ir('dia');else{const y=window.scrollY;render();window.scrollTo(0,Math.min(y,0))}}
+  else if(d.diaSel){diaSel=d.diaSel==='hoy'?hoyISO():d.diaSel;if(tab!=='dia')ir('dia');else quieto()}
   else if('verMes' in d){verMes=!verMes;ls.set('eq_vermes',verMes?'1':null);render()}
   else if(d.mdMes){const [y,m]=(mdCursor||hoyISO()).split('-').map(Number);mdCursor=new Date(Date.UTC(y,m-1+(+d.mdMes),1)).toISOString().slice(0,10);render()}
-  else if(d.mdDia){diaSel=d.mdDia<hoyISO()?hoyISO():d.mdDia;mdCursor=diaSel;render();const h=document.querySelector('.dayhead.grande');if(h)h.scrollIntoView({block:'start',behavior:'smooth'})}
+  else if(d.mdDia){diaSel=d.mdDia<hoyISO()?hoyISO():d.mdDia;if(!diaSel.startsWith((mdCursor||hoyISO()).slice(0,7)))mdCursor=diaSel;quieto()}
   else if(d.hecha){const t=(S.tareas||[]).find(x=>x.id===d.hecha);if(t){marcarHecha(t,true);render()}}
   else if(d.deshacer){const t=(S.tareas||[]).find(x=>x.id===d.deshacer);if(t){marcarHecha(t,false);render()}}
   else if(d.verT){editId=d.verT;ir('detallet')}
@@ -554,13 +558,13 @@ document.addEventListener('click',ev=>{
   else if(d.marcar){const e=S.eventos.find(x=>x.id===d.marcar);if(e){registrarLlegada(e,true);render()}}
   else if('geo' in d){seguirUbicacion();render()}
   else if('ubicar' in d) ubicarForm(b);
-  else if(d.agVista){agVista=d.agVista;ls.set('eq_agvista2',agVista);render()}
+  else if(d.agVista){agVista=d.agVista;ls.set('eq_agvista2',agVista);agCursor=hoyISO();agDia=null;render()}
   else if(d.agMover){const h0=hoyISO();agCursor=addDias(agCursor<h0?h0:(agCursor||h0),+d.agMover);if(agCursor<h0)agCursor=h0;render()}
   else if(d.agMes){const [y,m]=(agCursor||hoyISO()).split('-').map(Number);agCursor=new Date(Date.UTC(y,m-1+(+d.agMes),1)).toISOString().slice(0,10);agDia=null;render()}
-  else if(d.agDia){agDia=d.agDia;agCursor=d.agDia;render();const g=document.querySelector('.daygroup');if(g)g.scrollIntoView({block:'start',behavior:'smooth'})}
+  else if(d.agDia){agDia=d.agDia;if(!agDia.startsWith((agCursor||hoyISO()).slice(0,7)))agCursor=agDia;quieto()}
 
-  else if(d.terminar){const e=S.eventos.find(x=>x.id===d.terminar);if(e){terminar(e,true);render();window.scrollTo({top:0,behavior:'smooth'})}}
-  else if(d.reabrir){const e=S.eventos.find(x=>x.id===d.reabrir);if(e){terminar(e,false);render()}}
+  else if(d.terminar){const e=S.eventos.find(x=>x.id===d.terminar);if(e){terminar(e,true);render();const c=document.querySelector('.card.fn.hero');if(c)window.scrollTo(0,Math.max(0,c.getBoundingClientRect().top+window.scrollY-90))}}
+  else if(d.reabrir){const e=S.eventos.find(x=>x.id===d.reabrir);if(e){terminar(e,false);quieto()}}
   else if('cambiar' in d){me=null;miPin=null;ls.set('eq_yo',null);ls.set('eq_pin',null);render()}
   else if(d.ojo){const i=document.getElementById(d.ojo);if(i){const ver=i.type==='password';i.type=ver?'text':'password';b.innerHTML=ver?I.ojoNo:I.ojo;b.setAttribute('aria-label',ver?'Ocultar':'Mostrar');i.focus()}}
   else if(d.pinNuevo){S.pines=S.pines||{};S.pines[d.pinNuevo]=pinNuevo();dirty=true;render()}
@@ -581,7 +585,7 @@ document.addEventListener('submit',async ev=>{
   if(f.id==='f-codigo'){const btn=f.querySelector('button');btn.disabled=true;btn.textContent='Abriendo…';await abrir($('#codigo').value);render()}
   else if(f.id==='f-yo'){
     const t=sinTilde($('#yo').value), n=S.equipo.find(x=>sinTilde(x)===t)||S.equipo.find(x=>sinTilde(x).split(' ')[0]===t.split(' ')[0]);
-    const p=$('#pin').value.trim();
+    const p=$('#pin').value.trim(); yoEscrito=$('#yo').value;
     if(!n) errYo='No encontramos ese nombre en el equipo. Revisá cómo lo escribiste.';
     else if(!pinDe(n)) errYo='Todavía no tenés PIN. Pedíselo a Pablo.';
     else if(p!==pinDe(n)) errYo='Ese PIN no es el tuyo.';
@@ -614,7 +618,7 @@ if('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch
   if(ls.get('eq_geo_ok')&&me)seguirUbicacion();
   else if(navigator.permissions&&navigator.permissions.query)navigator.permissions.query({name:'geolocation'}).then(p=>{if(p.state==='granted')seguirUbicacion();else if(p.state==='denied'){geoEstado='negado';if(S)render()}}).catch(()=>{});
   if(tab==='armar'&&!owner)tab='dia';
-  if(codigo&&await abrir(codigo)){validarYo();registrarCambios()}else{S=null;if(codigo)errLock=errLock||'Ingresá de nuevo el código del equipo.'}
+  if(codigo&&await abrir(codigo)){validarYo()}else{S=null;if(codigo)errLock=errLock||'Ingresá de nuevo el código del equipo.'}
   render();
   enviarCola();
 })();
