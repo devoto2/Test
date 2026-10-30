@@ -127,6 +127,28 @@ function bannerUbicacion(){
   return `<div class="aviso">${I.map}<div><strong>Activá tu ubicación</strong><span>Para marcar tu llegada sola.</span></div><button class="btn small primary" data-geo>Activar</button></div>`;
 }
 
+/* ---------- día con varios lugares: paso a paso ---------- */
+// Lo terminado queda tildado arriba, el lugar de ahora se ve completo y lo que sigue queda en una lista corta.
+let terminados=(()=>{try{return JSON.parse(ls.get('eq_terminados')||'{}')}catch(e){return {}}})();
+function terminar(e,si){
+  if(si) terminados[e.id]={hora:ahoraHM()}; else delete terminados[e.id];
+  ls.set('eq_terminados',JSON.stringify(terminados));
+  encolar({id:`${me}|${e.id}|${si?'termine':'no_termine'}|${Date.now()}`,tipo:si?'salida':'salida_deshecha',ts:new Date().toISOString(),quien:me,evento_id:e.id,lugar:e.lugar,fecha:e.fecha,gps:pos?pos.join(','):null,dist_m:null,manual:true});
+  enviarCola();
+}
+function pasoAPaso(lista){
+  const n=lista.length, hechos=lista.filter(e=>terminados[e.id]).length, act=lista.findIndex(e=>!terminados[e.id]);
+  let h=`<div class="pasos" aria-label="Paso ${Math.min(hechos+1,n)} de ${n}">${lista.map((e,i)=>`<span class="${terminados[e.id]?'ok':i===act?'ahora':''}"></span>`).join('')}</div>`;
+  h+=`<p class="sub">${act<0?'Terminaste todo el día. ¡Gracias!':`Lugar ${act+1} de ${n}`}</p>`;
+  lista.forEach((e,i)=>{
+    const num=(i+1)+'°';
+    if(terminados[e.id]) h+=`<div class="fila hecho"><span class="num">${I.ok}</span><span class="place">${esc(e.lugar)}</span><span class="sub">listo ${esc(terminados[e.id].hora)}</span><button class="link" data-reabrir="${e.id}">Deshacer</button></div>`;
+    else if(i===act) h+=tarjeta(e,true,'Ahora · '+num).replace('</article>',`${i<n-1?`<button class="btn" data-terminar="${e.id}">${I.ok}Terminé acá, voy al ${i+2}°</button>`:`<button class="btn" data-terminar="${e.id}">${I.ok}Terminé el día</button>`}</article>`);
+    else h+=`<button class="fila" data-ver="${e.id}"><span class="num">${num}</span><span class="place">${esc(e.lugar)}</span><span class="sub">${esc(e.llegada||e.funcion||e.horario||'')}</span></button>`;
+  });
+  return h;
+}
+
 /* ---------- tareas de producción ---------- */
 let hechas=(()=>{try{return JSON.parse(ls.get('eq_hechas')||'{}')}catch(e){return {}}})();
 function encolar(x){let cola=[];try{cola=JSON.parse(ls.get('eq_cola')||'[]')}catch(err){}cola.push(x);ls.set('eq_cola',JSON.stringify(cola.slice(-200)))}
@@ -309,8 +331,8 @@ function vistaDia(){
   let h=`<div class="marca">Blanco<span>Flor</span><small>Equipo</small></div>${bannerInstalar()}${bannerUbicacion()}
   <div class="top"><h1>Hola, ${esc(me)}</h1><button class="chip" data-cambiar>No soy ${esc(me)}</button></div>`;
   h+=`<div class="top"><div class="dayhead grande">${diaSel===hoy?'Hoy':diaSel===addDias(hoy,1)?'Mañana':fechaLarga(diaSel)}</div>${diaSel!==hoy?'<button class="chip" data-dia-sel="hoy">Hoy</button>':''}</div>`;
-  if(del.length>1) h+=`<p class="sub">${del.length} lugares. Empezá por el 1.</p>`;
-  if(del.length) h+=del.map((e,i)=>tarjeta(e,i===0,del.length>1?(i+1)+'°':'')).join('');
+  if(del.length>1) h+=pasoAPaso(del);
+  else if(del.length) h+=tarjeta(del[0],true,'');
   if(tdel.length) h+=`<span class="label">Producción</span>`+tdel.map(tarjetaTarea).join('');
   if(!del.length&&!tdel.length){
     const prox=m.find(e=>e.fecha>diaSel);
@@ -528,6 +550,8 @@ document.addEventListener('click',ev=>{
   else if(d.agMes){const [y,m]=(agCursor||hoyISO()).split('-').map(Number);agCursor=new Date(Date.UTC(y,m-1+(+d.agMes),1)).toISOString().slice(0,10);agDia=null;render()}
   else if(d.agDia){agDia=d.agDia;render()}
 
+  else if(d.terminar){const e=S.eventos.find(x=>x.id===d.terminar);if(e){terminar(e,true);render();window.scrollTo({top:0,behavior:'smooth'})}}
+  else if(d.reabrir){const e=S.eventos.find(x=>x.id===d.reabrir);if(e){terminar(e,false);render()}}
   else if('cambiar' in d){me=null;miPin=null;ls.set('eq_yo',null);ls.set('eq_pin',null);render()}
   else if(d.ojo){const i=document.getElementById(d.ojo);if(i){const ver=i.type==='password';i.type=ver?'text':'password';b.innerHTML=ver?I.ojoNo:I.ojo;b.setAttribute('aria-label',ver?'Ocultar':'Mostrar');i.focus()}}
   else if(d.pinNuevo){S.pines=S.pines||{};S.pines[d.pinNuevo]=pinNuevo();dirty=true;render()}

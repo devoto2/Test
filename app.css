@@ -198,3 +198,14 @@ a{color:var(--stem)}
 .mas summary{cursor:pointer;color:var(--muted);font-weight:700;padding:4px 0}
 .mas[open]{display:flex;flex-direction:column;gap:8px}
 .tdia i{min-height:1em;color:var(--stem);letter-spacing:2px}
+.pasos{display:flex;gap:6px}
+.pasos span{flex:1;height:8px;border-radius:99px;background:var(--line)}
+.pasos span.ok{background:var(--ok)}
+.pasos span.ahora{background:var(--stem)}
+.fila{display:flex;align-items:center;gap:12px;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:12px 14px;font:inherit;color:inherit;text-align:left;width:100%;cursor:pointer}
+.fila .num{flex:none;min-width:34px;height:34px;border-radius:9px;background:var(--petal-soft);display:grid;place-items:center;font-weight:800}
+.fila .place{flex:1;font-size:1.1rem;min-width:0}
+.fila.hecho{opacity:.7;cursor:default}
+.fila.hecho .num{background:var(--ok-soft);color:var(--ok)}
+.fila.hecho .num svg{width:20px;height:20px}
+.fila.hecho .place{text-decoration:line-through}
