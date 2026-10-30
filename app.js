@@ -237,7 +237,6 @@ function vistaLock(){
   return `<section class="card lock" style="align-items:center;text-align:center">
    <img class="logo" src="icons/logo.png" alt="Blanco Flor">
    <h1>Equipo de ramos</h1>
-   <p class="sub">Ingresá el código del equipo.</p>
    <form id="f-codigo" style="width:100%">
     ${campoOculto('codigo','Código del equipo')}
     ${errLock?`<p class="err" role="alert">${esc(errLock)}</p>`:''}
@@ -283,11 +282,11 @@ function bannerInstalar(){
   return `<div class="aviso"><div><strong>Instalá la app</strong><span>${txt}</span></div>${instalar&&!ios?'<button class="btn small primary" data-instalar>Instalar</button>':''}<button class="x" data-noinst aria-label="Ocultar">×</button></div>`;
 }
 function vistaQuien(){
-  return `${bannerInstalar()}<section class="card"><h2>¿Quién sos?</h2><p class="sub">Escribí tu nombre y tu PIN de 4 números. Te lo pasa Pablo. El celular se acuerda la próxima vez.</p>
-  <form id="f-yo"><input id="yo" autocomplete="given-name" autocapitalize="words" placeholder="Tu nombre" aria-label="Tu nombre" required>
-  ${campoOculto('pin','Tu PIN','inputmode="numeric" maxlength="8"')}
+  return `${bannerInstalar()}<section class="card"><h2>Entrar</h2>
+  <form id="f-yo"><input id="yo" autocomplete="given-name" autocapitalize="words" placeholder="Nombre" aria-label="Nombre" required>
+  ${campoOculto('pin','PIN','inputmode="numeric" maxlength="8"')}
   ${errYo?`<p class="err" role="alert">${esc(errYo)}</p>`:''}
-  <button class="btn primary" type="submit">Listo</button></form></section>`;
+  <button class="btn primary" type="submit">Entrar</button></form></section>`;
 }
 function vistaDia(){
   if(!me) return vistaQuien();
