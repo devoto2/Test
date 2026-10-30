@@ -477,6 +477,7 @@ function tabs(){
 function render(){
   if(!S){$('#app').innerHTML=vistaLock();return}
   const V={detalle:vistaDetalle,detallet:vistaDetalleT,form:vistaForm,formt:vistaFormT,armar:vistaArmar,agenda:vistaAgenda,pablo:vistaPablo};
+  if(!me&&tab!=='pablo'){$('#app').innerHTML=vistaQuien();return}
   $('#app').innerHTML=(V[tab]||vistaDia)()+`<p class="foot">Agenda actualizada el ${esc(fmtActualizado(S.actualizado))}</p>`+tabs();
   ubicarFaltantes();
 }
@@ -565,7 +566,7 @@ document.addEventListener('click',ev=>{
 
   else if(d.terminar){const e=S.eventos.find(x=>x.id===d.terminar);if(e){terminar(e,true);render();const c=document.querySelector('.card.fn.hero');if(c)window.scrollTo(0,Math.max(0,c.getBoundingClientRect().top+window.scrollY-90))}}
   else if(d.reabrir){const e=S.eventos.find(x=>x.id===d.reabrir);if(e){terminar(e,false);quieto()}}
-  else if('cambiar' in d){me=null;miPin=null;ls.set('eq_yo',null);ls.set('eq_pin',null);render()}
+  else if('cambiar' in d){if(!b.dataset.seguro){b.dataset.seguro='1';b.textContent='Tocá de nuevo para salir';setTimeout(()=>{if(b.isConnected){delete b.dataset.seguro;b.textContent='No soy '+me}},4000);return}me=null;miPin=null;ls.set('eq_yo',null);ls.set('eq_pin',null);render()}
   else if(d.ojo){const i=document.getElementById(d.ojo);if(i){const ver=i.type==='password';i.type=ver?'text':'password';b.innerHTML=ver?I.ojoNo:I.ojo;b.setAttribute('aria-label',ver?'Ocultar':'Mostrar');i.focus()}}
   else if(d.pinNuevo){S.pines=S.pines||{};S.pines[d.pinNuevo]=pinNuevo();dirty=true;render()}
   else if(d.ver){editId=d.ver;ir('detalle')}
@@ -610,10 +611,6 @@ async function refrescar(){
 }
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'){enviarCola();refrescar()}});
 setInterval(refrescar,60000);
-// iPhone instalado: si el sistema no informa el alto de la barra de estado, se reserva igual para que el contenido no pase por debajo.
-(()=>{const ios=/iphone|ipad|ipod/i.test(navigator.userAgent), app=navigator.standalone||matchMedia('(display-mode: standalone)').matches;
-  if(!ios||!app)return; const t=document.createElement('div');t.style.cssText='position:fixed;top:0;height:env(safe-area-inset-top)';document.body.appendChild(t);
-  if(t.offsetHeight<20)document.documentElement.style.setProperty('--arriba','50px');t.remove()})();
 if('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(()=>{});
 
 (async()=>{
