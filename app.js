@@ -392,6 +392,25 @@ function vistaDetalle(){
   return `<div class="top"><button class="chip" data-tab="${previo||'agenda'}">← Volver</button>${owner?`<button class="chip" data-editar="${e.id}">Editar</button>`:''}</div>
   <div class="dayhead">${fechaLarga(e.fecha)}</div>`+tarjeta(e,true);
 }
+/* ---------- panel que sube desde abajo (detalle sin cambiar de pantalla) ---------- */
+function abrirHoja(html){
+  cerrarHoja(true);
+  const h=document.createElement('div'); h.id='hoja'; h.className='hoja';
+  h.innerHTML=`<button class="hoja-fondo" data-cerrar-hoja aria-label="Cerrar"></button><div class="hoja-panel" role="dialog" aria-modal="true"><div class="hoja-top"><span class="asa"></span><button class="hoja-x" data-cerrar-hoja aria-label="Cerrar">×</button></div><div class="hoja-cont">${html}</div></div>`;
+  document.body.appendChild(h); requestAnimationFrame(()=>h.classList.add('abierta'));
+  const p=h.querySelector('.hoja-panel'), c=h.querySelector('.hoja-cont'); let y0=null, dy=0;
+  p.addEventListener('touchstart',ev=>{if(c.scrollTop<=0){y0=ev.touches[0].clientY;dy=0;p.style.transition='none'}},{passive:true});
+  p.addEventListener('touchmove',ev=>{if(y0==null)return;dy=Math.max(0,ev.touches[0].clientY-y0);p.style.transform=`translateY(${dy}px)`},{passive:true});
+  p.addEventListener('touchend',()=>{if(y0==null)return;p.style.transition='';p.style.transform='';y0=null;if(dy>90)cerrarHoja()});
+}
+function cerrarHoja(ya){
+  const h=$('#hoja'); if(!h) return;
+  if(ya){h.remove();return}
+  h.classList.remove('abierta'); setTimeout(()=>h.remove(),260);
+}
+const hojaEvento=e=>`<div class="dayhead">${fechaLarga(e.fecha)}</div>${tarjeta(e,false)}${owner?`<button class="btn" data-editar="${e.id}">${I.edit}Editar</button>`:''}`;
+document.addEventListener('keydown',ev=>{if(ev.key==='Escape')cerrarHoja()});
+
 function vistaPablo(){
   return `<div class="top"><button class="chip" data-tab="agenda">← Volver</button></div>
   <section class="card"><h2>Modo Pablo</h2>
@@ -548,6 +567,8 @@ async function publicar(btn){
 document.addEventListener('click',ev=>{
   const b=ev.target.closest('button'); if(!b)return;
   const d=b.dataset;
+  if('cerrarHoja' in d){cerrarHoja();return}
+  if(b.closest('#hoja')&&(d.editar||d.editarT||d.tab))cerrarHoja(true);
   if(d.tab) ir(d.tab);
   else if(d.diaSel){diaSel=d.diaSel==='hoy'?hoyISO():d.diaSel;if(tab!=='dia')ir('dia');else quieto()}
   else if('verMes' in d){verMes=!verMes;ls.set('eq_vermes',verMes?'1':null);render()}
@@ -555,7 +576,7 @@ document.addEventListener('click',ev=>{
   else if(d.mdDia){diaSel=d.mdDia<hoyISO()?hoyISO():d.mdDia;quieto()}
   else if(d.hecha){const t=(S.tareas||[]).find(x=>x.id===d.hecha);if(t){marcarHecha(t,true);render()}}
   else if(d.deshacer){const t=(S.tareas||[]).find(x=>x.id===d.deshacer);if(t){marcarHecha(t,false);render()}}
-  else if(d.verT){editId=d.verT;ir('detallet')}
+  else if(d.verT){const t=(S.tareas||[]).find(x=>x.id===d.verT);if(t)abrirHoja(`<div class="dayhead">${fechaLarga(t.fecha)}</div>`+tarjetaTarea(t))}
   else if(d.editarT){editId=d.editarT;ir('formt')}
   else if(d.borrarT){if(b.dataset.seguro){S.tareas=(S.tareas||[]).filter(t=>t.id!==d.borrarT);dirty=true;ir('armar')}else{b.dataset.seguro='1';b.textContent='Tocá de nuevo para borrar'}}
   else if(d.marcar){const e=S.eventos.find(x=>x.id===d.marcar);if(e){registrarLlegada(e,true);render()}}
@@ -571,7 +592,7 @@ document.addEventListener('click',ev=>{
   else if('cambiar' in d){if(!b.dataset.seguro){b.dataset.seguro='1';b.textContent='Tocá de nuevo para salir';setTimeout(()=>{if(b.isConnected){delete b.dataset.seguro;b.textContent='No soy '+me}},4000);return}me=null;miPin=null;ls.set('eq_yo',null);ls.set('eq_pin',null);render()}
   else if(d.ojo){const i=document.getElementById(d.ojo);if(i){const ver=i.type==='password';i.type=ver?'text':'password';b.innerHTML=ver?I.ojoNo:I.ojo;b.setAttribute('aria-label',ver?'Ocultar':'Mostrar');i.focus()}}
   else if(d.pinNuevo){S.pines=S.pines||{};S.pines[d.pinNuevo]=pinNuevo();dirty=true;render()}
-  else if(d.ver){editId=d.ver;ir('detalle')}
+  else if(d.ver){const e=S.eventos.find(x=>x.id===d.ver);if(e)abrirHoja(hojaEvento(e))}
   else if(d.editar){editId=d.editar;ir('form')}
   else if(d.asignar) b.setAttribute('aria-pressed',b.getAttribute('aria-pressed')==='true'?'false':'true');
   else if(d.quitar){S.equipo=S.equipo.filter(n=>n!==d.quitar);if(S.pines)delete S.pines[d.quitar];S.eventos.forEach(e=>e.equipo=(e.equipo||[]).filter(n=>n!==d.quitar));(S.tareas||[]).forEach(t=>t.equipo=(t.equipo||[]).filter(n=>n!==d.quitar));dirty=true;render()}
