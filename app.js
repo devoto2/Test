@@ -133,7 +133,7 @@ let terminados=(()=>{try{return JSON.parse(ls.get('eq_terminados')||'{}')}catch(
 function terminar(e,si){
   if(si) terminados[e.id]={hora:ahoraHM()}; else delete terminados[e.id];
   ls.set('eq_terminados',JSON.stringify(terminados));
-  encolar({id:`${me}|${e.id}|${si?'termine':'no_termine'}|${Date.now()}`,tipo:si?'salida':'salida_deshecha',ts:new Date().toISOString(),quien:me,evento_id:e.id,lugar:e.lugar,fecha:e.fecha,gps:pos?pos.join(','):null,dist_m:null,manual:true});
+  encolar({id:`${me}|${e.id}|${si?'termine':'no_termine'}|${Date.now()}`,tipo:si?'salida':'salida_deshecha',ts:new Date().toISOString(),quien:me,evento_id:e.id,lugar:e.lugar,fecha:e.fecha,gps:pos?{lat:+pos[0].toFixed(5),lng:+pos[1].toFixed(5)}:null,dist_m:null,manual:true});
   enviarCola();
 }
 function pasoAPaso(lista){
