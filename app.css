@@ -10,11 +10,12 @@
   --f-body:"Figtree",system-ui,-apple-system,"Segoe UI",sans-serif;
   color-scheme:light;
 }
-@media (prefers-color-scheme: dark){:root{
+/* Siempre claro: en la calle se lee mejor. El oscuro queda disponible con la clase .oscuro */
+:root.oscuro{
   --bg:#110F0F; --surface:#1C1919; --ink:#F3EFEE; --muted:#A79F9C; --line:#302B2A;
   --stem:#FF4A4D; --stem-ink:#1A0606; --stem-soft:#3A1718;
   --petal:#F3EFEE; --petal-soft:#2A2525; --warn:#F2B35A; --warn-soft:#3A2C14;
-  --ok:#5CCB8A; --ok-soft:#173225; color-scheme:dark}}
+  --ok:#5CCB8A; --ok-soft:#173225; color-scheme:dark}
 *{box-sizing:border-box}
 html{-webkit-text-size-adjust:100%}
 body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:17px;line-height:1.45;margin:0;padding-top:env(safe-area-inset-top,0px)}
