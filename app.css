@@ -183,3 +183,8 @@ a{color:var(--stem)}
 .leyenda .lf::before{background:var(--stem)}
 .leyenda .lt::before{background:var(--ink)}
 .cal{display:flex;flex-direction:column;gap:10px;border-top:1px solid var(--line);padding-top:14px;margin-top:4px}
+.oculto{position:relative}
+.oculto input{padding-right:52px}
+.ojo{position:absolute;right:4px;top:50%;transform:translateY(-50%);width:44px;height:40px;border:0;background:none;color:var(--muted);display:grid;place-items:center;cursor:pointer}
+.ojo svg{width:22px;height:22px}
+.pill.top{background:var(--stem);color:var(--stem-ink)}

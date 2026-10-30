@@ -7,7 +7,7 @@ const REGISTRO_URL='https://script.google.com/macros/s/AKfycbxJyFxYtxpFDxBllGxZJ
 const $=s=>document.querySelector(s);
 const ls={get(k){try{return localStorage.getItem(k)}catch(e){return null}},set(k,v){try{v==null?localStorage.removeItem(k):localStorage.setItem(k,v)}catch(e){}}};
 
-let S=null, codigo=ls.get('eq_codigo'), me=ls.get('eq_yo'), tab=ls.get('eq_tab')||'dia';
+let S=null, codigo=ls.get('eq_codigo'), me=ls.get('eq_yo'), miPin=ls.get('eq_pin'), tab=ls.get('eq_tab')||'dia';
 let agVista=ls.get('eq_agvista')||'semana', agQuien=null, agCursor=null, agDia=null, pos=null, precision=null, geoEstado='no', errYo='', diaSel=null, verMes=ls.get('eq_vermes')==='1', mdCursor=null;
 let editId=null, dirty=false, token=ls.get('eq_token'), owner=!!token, nuevoCodigo=null, errLock='', instalar=null;
 
@@ -62,6 +62,8 @@ const I={
  cal:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>',
  list:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4.5" cy="6" r="1.2"/><circle cx="4.5" cy="12" r="1.2"/><circle cx="4.5" cy="18" r="1.2"/></svg>',
  team:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="9" cy="8" r="3.2"/><path d="M3 20c0-3.3 2.7-5.5 6-5.5s6 2.2 6 5.5"/><circle cx="17" cy="9" r="2.4"/><path d="M16 14.6c2.8.2 5 2 5 5"/></svg>',
+ ojo:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>',
+ ojoNo:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.6 5.1A10.4 10.4 0 0 1 12 5c6.4 0 10 7 10 7a17 17 0 0 1-2.6 3.6M6.6 6.6C3.7 8.4 2 12 2 12s3.6 7 10 7a9.8 9.8 0 0 0 5.4-1.6"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2M3 3l18 18"/></svg>',
  clock:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
  edit:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16v4z"/><path d="M13.5 6.5l4 4"/></svg>'
 };
@@ -225,13 +227,19 @@ async function abrir(cod){
 }
 
 /* ---------- vistas ---------- */
+// Campo que no muestra lo que se escribe, con el ojito para verlo.
+const campoOculto=(id,ph,extra='')=>`<div class="oculto"><input id="${id}" type="password" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="${ph}" aria-label="${ph}" ${extra} required><button type="button" class="ojo" data-ojo="${id}" aria-label="Mostrar">${I.ojo}</button></div>`;
+// PIN personal: cada uno entra con su nombre y su PIN, así nadie puede hacerse pasar por otro.
+const pinDe=n=>(S.pines||{})[n]||'';
+const pinNuevo=()=>String(crypto.getRandomValues(new Uint32Array(1))[0]%10000).padStart(4,'0');
+function validarYo(){if(me&&(!S.equipo.includes(me)||!pinDe(me)||pinDe(me)!==miPin)){me=null;miPin=null;ls.set('eq_yo',null);ls.set('eq_pin',null)}}
 function vistaLock(){
   return `<section class="card lock" style="align-items:center;text-align:center">
    <img class="logo" src="icons/logo.png" alt="Blanco Flor">
    <h1>Equipo de ramos</h1>
    <p class="sub">Ingresá el código del equipo.</p>
    <form id="f-codigo" style="width:100%">
-    <input id="codigo" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="Código del equipo" aria-label="Código del equipo" required>
+    ${campoOculto('codigo','Código del equipo')}
     ${errLock?`<p class="err" role="alert">${esc(errLock)}</p>`:''}
     <button class="btn primary" type="submit">Entrar</button>
    </form></section>`;
@@ -239,9 +247,10 @@ function vistaLock(){
 function horaBloque(e){
   if(e.llegada) return `<span class="label">Llegar a las</span><div class="when"><span class="big">${esc(e.llegada)}</span>${e.funcion?`<span class="sub">la función empieza ${esc(e.funcion)}</span>`:''}</div>`;
   if(e.funcion) return `<span class="label">La función empieza</span><div class="when"><span class="big">${esc(e.funcion)}</span></div>`;
+  if(e.horario) return `<span class="label">Horario</span><div class="when"><span class="big">${esc(e.horario)}</span></div>`;
   return `<div class="when"><span class="big tbd">Horario a confirmar</span></div><p class="sub">Pablo carga la hora apenas la tenga. Volvé a abrir la app antes de salir.</p>`;
 }
-const pills=e=>`<div class="row">${e.prio==='ir'?'<span class="pill ir">Ir seguro</span>':'<span class="pill probar">De prueba</span>'}${e.confirmado?'':'<span class="pill conf">Datos a confirmar</span>'}</div>`;
+const pills=e=>`<div class="row">${e.importante?'<span class="pill top">El más importante</span>':''}${e.prio==='ir'?'<span class="pill ir">Ir seguro</span>':'<span class="pill probar">De prueba</span>'}${e.confirmado?'':'<span class="pill conf">Datos a confirmar</span>'}</div>`;
 function tarjeta(e,hero){
   const eq=e.equipo||[], comp=eq.filter(n=>n!==me), r=e.ramos||{}, tr=(r.c||0)+(r.m||0)+(r.g||0);
   const conQuien=comp.length?esc(comp.join(', ')):(eq.length?'Vas solo/a':'<span style="color:var(--warn);font-weight:700">Sin asignar</span>');
@@ -258,7 +267,7 @@ function tarjeta(e,hero){
 function mini(e,attr){
   const eq=e.equipo||[], sin=!eq.length;
   return `<button class="card mini${sin?' unassigned':''}" ${attr}="${e.id}">
-   <span class="t">${esc(e.llegada||e.funcion||'¿?')}</span>
+   <span class="t">${esc(e.llegada||e.funcion||e.horario||'¿?')}</span>
    <span style="min-width:0"><span class="place">${esc(e.lugar)}</span>${llegadas[e.id]?`<span class="dist cerca">Llegaste ${esc(llegadas[e.id].hora)}</span>`:(distDe(e)!=null?`<span class="dist" data-km="${e.id}">${fmtDist(distDe(e))}</span>`:'')}
    <span class="who-l">${sin?'Sin asignar':esc(eq.join(', '))}${e.confirmado?'':' · a confirmar'}</span></span></button>`;
 }
@@ -274,8 +283,9 @@ function bannerInstalar(){
   return `<div class="aviso"><div><strong>Instalá la app</strong><span>${txt}</span></div>${instalar&&!ios?'<button class="btn small primary" data-instalar>Instalar</button>':''}<button class="x" data-noinst aria-label="Ocultar">×</button></div>`;
 }
 function vistaQuien(){
-  return `${bannerInstalar()}<section class="card"><h2>¿Quién sos?</h2><p class="sub">Escribí tu nombre. El celular se acuerda la próxima vez.</p>
+  return `${bannerInstalar()}<section class="card"><h2>¿Quién sos?</h2><p class="sub">Escribí tu nombre y tu PIN de 4 números. Te lo pasa Pablo. El celular se acuerda la próxima vez.</p>
   <form id="f-yo"><input id="yo" autocomplete="given-name" autocapitalize="words" placeholder="Tu nombre" aria-label="Tu nombre" required>
+  ${campoOculto('pin','Tu PIN','inputmode="numeric" maxlength="8"')}
   ${errYo?`<p class="err" role="alert">${esc(errYo)}</p>`:''}
   <button class="btn primary" type="submit">Listo</button></form></section>`;
 }
@@ -283,7 +293,7 @@ function vistaDia(){
   if(!me) return vistaQuien();
   const hoy=hoyISO(), m=mios(), mt=misTareas();
   if(!diaSel||diaSel<hoy) diaSel=hoy;
-  const del=m.filter(e=>e.fecha===diaSel), tdel=mt.filter(t=>t.fecha===diaSel);
+  const del=m.filter(e=>e.fecha===diaSel).sort((a,b)=>(b.importante?1:0)-(a.importante?1:0)), tdel=mt.filter(t=>t.fecha===diaSel);
   let h=`<div class="marca">Blanco<span>Flor</span><small>Equipo</small></div>${bannerInstalar()}${bannerUbicacion()}
   <div class="top"><div><h1>Hola, ${esc(me)}</h1><div class="hoy">Hoy es ${fechaLarga(hoy)}</div></div><button class="chip" data-cambiar>Cambiar</button></div>`;
   h+=`<div class="top"><div class="dayhead">${diaSel===hoy?'Tu día':fechaLarga(diaSel)}</div>${diaSel!==hoy?'<button class="chip" data-dia-sel="hoy">Volver a hoy</button>':''}</div>`;
@@ -347,7 +357,7 @@ function vistaPablo(){
   return `<div class="top"><button class="chip" data-tab="agenda">← Volver</button></div>
   <section class="card"><h2>Modo Pablo</h2>
   <p>Para guardar cambios, la app necesita una clave de GitHub con permiso para escribir solo en el repositorio de la app. Se guarda únicamente en este celular.</p>
-  <form id="f-token"><div class="field"><label for="token">Clave de GitHub</label><input id="token" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="github_pat_…" required></div>
+  <form id="f-token"><div class="field"><label for="token">Clave de GitHub</label>${campoOculto('token','github_pat_…')}</div>
   ${errLock?`<p class="err" role="alert">${esc(errLock)}</p>`:''}
   <button class="btn primary" type="submit">Activar</button></form></section>`;
 }
@@ -357,7 +367,8 @@ function vistaArmar(){
   return `<h1>Armar la agenda</h1>
   ${dirty?`<div class="banner"><strong>Tenés cambios sin publicar.</strong><span>El equipo los ve recién cuando publicás.</span><button class="btn primary" data-publicar>Publicar para el equipo</button></div>`:''}
   <section class="card"><h2>Equipo</h2>
-   <div class="who">${S.equipo.map(n=>`<span class="chip" style="cursor:default;display:inline-flex;align-items:center;gap:6px">${esc(n)}<button class="btn small danger" style="min-height:28px;padding:2px 9px" data-quitar="${esc(n)}" aria-label="Quitar a ${esc(n)}">×</button></span>`).join('')}</div>
+   <div class="who">${S.equipo.map(n=>`<span class="chip" style="cursor:default;display:inline-flex;align-items:center;gap:6px">${esc(n)} <span class="sub">PIN ${pinDe(n)?esc(pinDe(n)):'—'}</span><button class="btn small" style="min-height:28px;padding:2px 9px" data-pin-nuevo="${esc(n)}" aria-label="PIN nuevo para ${esc(n)}">PIN nuevo</button><button class="btn small danger" style="min-height:28px;padding:2px 9px" data-quitar="${esc(n)}" aria-label="Quitar a ${esc(n)}">×</button></span>`).join('')}</div>
+   <span class="hint">Pasale a cada uno su PIN por privado. Si cambiás un PIN, esa persona tiene que volver a entrar.</span>
    <form id="f-persona" class="row" style="flex-direction:row"><input id="nueva-persona" placeholder="Nombre" style="flex:1 1 160px" autocomplete="off" aria-label="Nombre de la persona"><button class="btn small primary" type="submit">Sumar</button></form>
    <div class="field"><label for="nuevo-codigo">Cambiar el código del equipo</label><input id="nuevo-codigo" autocomplete="off" autocapitalize="none" placeholder="Dejalo vacío para mantener el actual"><span class="hint">Si lo cambiás, pasáselo de nuevo a todos.</span></div>
   </section>
@@ -504,16 +515,18 @@ document.addEventListener('click',ev=>{
   else if(d.agMes){const [y,m]=(agCursor||hoyISO()).split('-').map(Number);agCursor=new Date(Date.UTC(y,m-1+(+d.agMes),1)).toISOString().slice(0,10);agDia=null;render()}
   else if(d.agDia){agDia=d.agDia;render()}
 
-  else if('cambiar' in d){me=null;ls.set('eq_yo',null);render()}
+  else if('cambiar' in d){me=null;miPin=null;ls.set('eq_yo',null);ls.set('eq_pin',null);render()}
+  else if(d.ojo){const i=document.getElementById(d.ojo);if(i){const ver=i.type==='password';i.type=ver?'text':'password';b.innerHTML=ver?I.ojoNo:I.ojo;b.setAttribute('aria-label',ver?'Ocultar':'Mostrar');i.focus()}}
+  else if(d.pinNuevo){S.pines=S.pines||{};S.pines[d.pinNuevo]=pinNuevo();dirty=true;render()}
   else if(d.ver){editId=d.ver;ir('detalle')}
   else if(d.editar){editId=d.editar;ir('form')}
   else if(d.asignar) b.setAttribute('aria-pressed',b.getAttribute('aria-pressed')==='true'?'false':'true');
-  else if(d.quitar){S.equipo=S.equipo.filter(n=>n!==d.quitar);S.eventos.forEach(e=>e.equipo=(e.equipo||[]).filter(n=>n!==d.quitar));(S.tareas||[]).forEach(t=>t.equipo=(t.equipo||[]).filter(n=>n!==d.quitar));dirty=true;render()}
+  else if(d.quitar){S.equipo=S.equipo.filter(n=>n!==d.quitar);if(S.pines)delete S.pines[d.quitar];S.eventos.forEach(e=>e.equipo=(e.equipo||[]).filter(n=>n!==d.quitar));(S.tareas||[]).forEach(t=>t.equipo=(t.equipo||[]).filter(n=>n!==d.quitar));dirty=true;render()}
   else if(d.borrar){if(b.dataset.seguro){S.eventos=S.eventos.filter(e=>e.id!==d.borrar);dirty=true;ir('armar')}else{b.dataset.seguro='1';b.textContent='Tocá de nuevo para borrar'}}
   else if('publicar' in d) publicar(b);
   else if('modoPablo' in d) ir('pablo');
   else if('sinPablo' in d){token=null;owner=false;ls.set('eq_token',null);ir('agenda')}
-  else if('salir' in d){if(b.dataset.seguro){['eq_codigo','eq_yo','eq_token','eq_tab','eq_agvista','eq_vermes'].forEach(k=>ls.set(k,null));location.reload()}else{b.dataset.seguro='1';b.textContent='Tocá de nuevo para cerrar sesión'}}
+  else if('salir' in d){if(b.dataset.seguro){['eq_codigo','eq_yo','eq_pin','eq_token','eq_tab','eq_agvista','eq_vermes'].forEach(k=>ls.set(k,null));location.reload()}else{b.dataset.seguro='1';b.textContent='Tocá de nuevo para cerrar sesión'}}
   else if('instalar' in d&&instalar){instalar.prompt();instalar=null}
   else if('noinst' in d){ls.set('eq_noinst','1');render()}
 });
@@ -522,9 +535,14 @@ document.addEventListener('submit',async ev=>{
   if(f.id==='f-codigo'){const btn=f.querySelector('button');btn.disabled=true;btn.textContent='Abriendo…';await abrir($('#codigo').value);render()}
   else if(f.id==='f-yo'){
     const t=sinTilde($('#yo').value), n=S.equipo.find(x=>sinTilde(x)===t)||S.equipo.find(x=>sinTilde(x).split(' ')[0]===t.split(' ')[0]);
-    if(n){me=n;errYo='';ls.set('eq_yo',me);render()}else{errYo='No encontramos ese nombre en el equipo. Revisá cómo lo escribiste.';render()}
+    const p=$('#pin').value.trim();
+    if(!n) errYo='No encontramos ese nombre en el equipo. Revisá cómo lo escribiste.';
+    else if(!pinDe(n)) errYo='Todavía no tenés PIN. Pedíselo a Pablo.';
+    else if(p!==pinDe(n)) errYo='Ese PIN no es el tuyo.';
+    else{me=n;miPin=p;errYo='';ls.set('eq_yo',me);ls.set('eq_pin',p)}
+    render();
   }
-  else if(f.id==='f-persona'){const n=$('#nueva-persona').value.trim();if(n&&!S.equipo.includes(n)){S.equipo.push(n);dirty=true}render()}
+  else if(f.id==='f-persona'){const n=$('#nueva-persona').value.trim();if(n&&!S.equipo.includes(n)){S.equipo.push(n);S.pines=S.pines||{};S.pines[n]=pinNuevo();dirty=true}render()}
   else if(f.id==='f-evento') guardarForm(f);
   else if(f.id==='f-tarea') guardarTarea(f);
   else if(f.id==='f-token'){
@@ -539,7 +557,7 @@ window.addEventListener('beforeunload',e=>{if(dirty){e.preventDefault();e.return
 document.addEventListener('visibilitychange',async()=>{
   if(document.visibilityState==='visible')enviarCola();
   if(document.visibilityState!=='visible'||!S||!codigo||dirty||tab==='form'||tab==='formt')return;
-  try{const n=await descifrar(await bajar(),codigo);if(n.actualizado!==S.actualizado||JSON.stringify(n)!==JSON.stringify(S)){S=n;render();toast('Agenda actualizada')}}catch(e){}
+  try{const n=await descifrar(await bajar(),codigo);if(n.actualizado!==S.actualizado||JSON.stringify(n)!==JSON.stringify(S)){S=n;validarYo();render();toast('Agenda actualizada')}}catch(e){}
 });
 if('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(()=>{});
 
@@ -549,7 +567,7 @@ if('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch
   if(ls.get('eq_geo_ok'))seguirUbicacion();
   else if(navigator.permissions&&navigator.permissions.query)navigator.permissions.query({name:'geolocation'}).then(p=>{if(p.state==='granted')seguirUbicacion();else if(p.state==='denied'){geoEstado='negado';if(S)render()}}).catch(()=>{});
   if(tab==='armar'&&!owner)tab='dia';
-  if(codigo&&await abrir(codigo)){if(me&&!S.equipo.includes(me))me=null}else{S=null;if(codigo)errLock=errLock||'Ingresá de nuevo el código del equipo.'}
+  if(codigo&&await abrir(codigo)){validarYo()}else{S=null;if(codigo)errLock=errLock||'Ingresá de nuevo el código del equipo.'}
   render();
   enviarCola();
 })();
