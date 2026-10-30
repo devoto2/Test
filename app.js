@@ -7,7 +7,7 @@ const REGISTRO_URL='https://script.google.com/macros/s/AKfycbxJyFxYtxpFDxBllGxZJ
 const $=s=>document.querySelector(s);
 const ls={get(k){try{return localStorage.getItem(k)}catch(e){return null}},set(k,v){try{v==null?localStorage.removeItem(k):localStorage.setItem(k,v)}catch(e){}}};
 
-let S=null, codigo=ls.get('eq_codigo'), me=ls.get('eq_yo'), miPin=ls.get('eq_pin'), tab=ls.get('eq_tab')||'dia';
+let S=null, codigo=ls.get('eq_codigo'), me=ls.get('eq_yo'), miPin=ls.get('eq_pin'), tab='dia';
 let agVista=ls.get('eq_agvista2')||'mes', agQuien=null, agCursor=null, agDia=null, pos=null, precision=null, geoEstado='no', errYo='', diaSel=null, verMes=ls.get('eq_vermes')==='1', mdCursor=null;
 let editId=null, dirty=false, token=ls.get('eq_token'), owner=!!token, nuevoCodigo=null, errLock='', instalar=null;
 
@@ -375,7 +375,7 @@ function vistaAgenda(){
     h+=`<div class="nav"><button class="chip" data-ag-mover="-7" aria-label="Semana anterior"${l<=hoy?' disabled':''}>‹</button><strong>${tit}</strong><button class="chip" data-ag-mover="7" aria-label="Semana siguiente">›</button></div>`;
     h+=dias.map(d=>`<section class="daygroup${d<hoy?' pasado':''}"><div class="dayhead">${d===hoy?'Hoy, ':''}${fechaLarga(d)}</div>${delDia(d)}</section>`).join('');
   }else{
-    const mes=agCursor.slice(0,7), sel=agDia&&agDia.startsWith(mes)?agDia:(hoy.startsWith(mes)?hoy:mes+'-01');
+    const mes=agCursor.slice(0,7), sel=agDia||(hoy.startsWith(mes)?hoy:mes+'-01');
     h+=gridMes(base,tb,agCursor,sel,'ag');
     h+=`<section class="daygroup"><div class="dayhead">${sel===hoy?'Hoy, ':''}${fechaLarga(sel)}</div>${delDia(sel)}</section>`;
   }
@@ -549,7 +549,7 @@ document.addEventListener('click',ev=>{
   else if(d.diaSel){diaSel=d.diaSel==='hoy'?hoyISO():d.diaSel;if(tab!=='dia')ir('dia');else quieto()}
   else if('verMes' in d){verMes=!verMes;ls.set('eq_vermes',verMes?'1':null);render()}
   else if(d.mdMes){const [y,m]=(mdCursor||hoyISO()).split('-').map(Number);mdCursor=new Date(Date.UTC(y,m-1+(+d.mdMes),1)).toISOString().slice(0,10);render()}
-  else if(d.mdDia){diaSel=d.mdDia<hoyISO()?hoyISO():d.mdDia;if(!diaSel.startsWith((mdCursor||hoyISO()).slice(0,7)))mdCursor=diaSel;quieto()}
+  else if(d.mdDia){diaSel=d.mdDia<hoyISO()?hoyISO():d.mdDia;quieto()}
   else if(d.hecha){const t=(S.tareas||[]).find(x=>x.id===d.hecha);if(t){marcarHecha(t,true);render()}}
   else if(d.deshacer){const t=(S.tareas||[]).find(x=>x.id===d.deshacer);if(t){marcarHecha(t,false);render()}}
   else if(d.verT){editId=d.verT;ir('detallet')}
@@ -560,8 +560,8 @@ document.addEventListener('click',ev=>{
   else if('ubicar' in d) ubicarForm(b);
   else if(d.agVista){agVista=d.agVista;ls.set('eq_agvista2',agVista);agCursor=hoyISO();agDia=null;render()}
   else if(d.agMover){const h0=hoyISO();agCursor=addDias(agCursor<h0?h0:(agCursor||h0),+d.agMover);if(agCursor<h0)agCursor=h0;render()}
-  else if(d.agMes){const [y,m]=(agCursor||hoyISO()).split('-').map(Number);agCursor=new Date(Date.UTC(y,m-1+(+d.agMes),1)).toISOString().slice(0,10);agDia=null;render()}
-  else if(d.agDia){agDia=d.agDia;if(!agDia.startsWith((agCursor||hoyISO()).slice(0,7)))agCursor=agDia;quieto()}
+  else if(d.agMes){agDia=null;const [y,m]=(agCursor||hoyISO()).split('-').map(Number);agCursor=new Date(Date.UTC(y,m-1+(+d.agMes),1)).toISOString().slice(0,10);agDia=null;render()}
+  else if(d.agDia){agDia=d.agDia;quieto()}
 
   else if(d.terminar){const e=S.eventos.find(x=>x.id===d.terminar);if(e){terminar(e,true);render();const c=document.querySelector('.card.fn.hero');if(c)window.scrollTo(0,Math.max(0,c.getBoundingClientRect().top+window.scrollY-90))}}
   else if(d.reabrir){const e=S.eventos.find(x=>x.id===d.reabrir);if(e){terminar(e,false);quieto()}}
@@ -610,6 +610,10 @@ async function refrescar(){
 }
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'){enviarCola();refrescar()}});
 setInterval(refrescar,60000);
+// iPhone instalado: si el sistema no informa el alto de la barra de estado, se reserva igual para que el contenido no pase por debajo.
+(()=>{const ios=/iphone|ipad|ipod/i.test(navigator.userAgent), app=navigator.standalone||matchMedia('(display-mode: standalone)').matches;
+  if(!ios||!app)return; const t=document.createElement('div');t.style.cssText='position:fixed;top:0;height:env(safe-area-inset-top)';document.body.appendChild(t);
+  if(t.offsetHeight<20)document.documentElement.style.setProperty('--arriba','50px');t.remove()})();
 if('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(()=>{});
 
 (async()=>{
