@@ -446,9 +446,11 @@ function vistaForm(){
   return `<div class="top"><button class="chip" data-tab="armar">← Volver</button><h2>${nuevo?'Nueva función':'Editar función'}</h2></div>
   <form id="f-evento" class="card" data-id="${e.id}">
    <div class="grid2"><div class="field"><label for="ev-fecha">Fecha</label><input id="ev-fecha" type="date" value="${esc(e.fecha)}" required></div>
-   <div class="field"><label for="ev-prio">Prioridad</label><select id="ev-prio"><option value="ir"${e.prio==='ir'?' selected':''}>Ir seguro</option><option value="probar"${e.prio==='probar'?' selected':''}>De prueba</option></select></div></div>
+   <div class="field"><label for="ev-orden">Orden en el día</label><input id="ev-orden" type="number" min="1" inputmode="numeric" value="${e.orden||''}" placeholder="1, 2, 3…"></div></div>
+   <label class="check"><input id="ev-imp" type="checkbox"${e.importante?' checked':''}> Importante</label>
    <div class="grid2"><div class="field"><label for="ev-llegada">Hora de llegada</label><input id="ev-llegada" type="time" value="${esc(e.llegada)}"></div>
    <div class="field"><label for="ev-funcion">Empieza la función</label><input id="ev-funcion" type="time" value="${esc(e.funcion)}"></div></div>
+   <div class="field"><label for="ev-horario">Si no hay hora fija</label><input id="ev-horario" value="${esc(e.horario||'')}" placeholder="Ej.: Todo el día"></div>
    <div class="field"><label for="ev-lugar">Lugar</label><input id="ev-lugar" value="${esc(e.lugar)}" required></div>
    <div class="field"><label for="ev-dir">Dirección (calle, número y localidad)</label><input id="ev-dir" value="${esc(e.direccion)}"></div>
    <div class="field"><label for="ev-ubic">Ubicación exacta</label><input id="ev-ubic" inputmode="decimal" value="${e.lat!=null?esc(e.lat+', '+e.lng):''}" placeholder="Se completa sola con la dirección">
@@ -498,8 +500,8 @@ function guardarForm(f){
   const id=f.dataset.id; let e=S.eventos.find(x=>x.id===id);
   if(!e){e={id};S.eventos.push(e)}
   const v=k=>document.getElementById(k).value.trim();
-  Object.assign(e,{fecha:v('ev-fecha'),llegada:v('ev-llegada'),funcion:v('ev-funcion'),lugar:v('ev-lugar'),direccion:v('ev-dir'),que:v('ev-que'),prio:v('ev-prio'),nota:v('ev-nota'),
-   confirmado:document.getElementById('ev-conf').checked,
+  Object.assign(e,{fecha:v('ev-fecha'),llegada:v('ev-llegada'),funcion:v('ev-funcion'),lugar:v('ev-lugar'),direccion:v('ev-dir'),que:v('ev-que'),nota:v('ev-nota'),
+   confirmado:document.getElementById('ev-conf').checked, importante:document.getElementById('ev-imp').checked, horario:v('ev-horario'), orden:+v('ev-orden')||0,
    equipo:[...f.querySelectorAll('[data-asignar]')].filter(b=>b.getAttribute('aria-pressed')==='true').map(b=>b.dataset.asignar),
    ramos:{c:+v('ev-c')||0,m:+v('ev-m')||0,g:+v('ev-g')||0}});
   const c=leerCoords(v('ev-ubic'));
